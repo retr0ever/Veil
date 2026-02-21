@@ -86,17 +86,17 @@ export function LandingPage() {
 
         <section className="w-[calc(100%+3rem)] -mx-6 bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
           <div className="h-px w-full bg-[#848188]/70" />
-          <div className="mx-auto max-w-[1180px] px-6 py-20 md:px-8 md:py-24">
-            <div className="grid items-start gap-12 md:grid-cols-[0.42fr_0.58fr] lg:gap-16">
+          <div className="mx-auto max-w-[1450px] px-6 py-24 md:px-10 md:py-32">
+            <div className="grid items-start gap-16 md:grid-cols-[0.42fr_0.58fr] lg:gap-20">
               <div>
-                <h2 className="text-[36px] font-semibold leading-[1.12] text-[#f4eff7] md:text-[40px]">
+                <h2 className="text-[46px] font-semibold leading-[1.12] text-[#f4eff7] md:text-[52px]">
                   How it works
                 </h2>
-                <p className="mt-4 text-[18px] leading-[1.6] text-[#c7bfd0] md:text-[20px]">
+                <p className="mt-5 text-[22px] leading-[1.62] text-[#c7bfd0] md:text-[26px]">
                   One URL change. Every request gets triaged, escalated, then logged.
                 </p>
 
-                <div className="mt-8 space-y-2">
+                <div className="mt-10 space-y-3">
                   {HOW_IT_WORKS_STEPS.map((step, index) => {
                     const active = index === activeHowItWorks
                     return (
@@ -106,20 +106,20 @@ export function LandingPage() {
                         onMouseEnter={() => setActiveHowItWorks(index)}
                         onFocus={() => setActiveHowItWorks(index)}
                         onClick={() => setActiveHowItWorks(index)}
-                        className={`w-full border-l-2 px-4 py-3 text-left transition-colors ${
+                        className={`w-full border-l-2 px-5 py-4 text-left transition-colors ${
                           active
                             ? 'border-[#d4a7da] bg-white/[0.03]'
                             : 'border-transparent hover:border-[#8d809a]'
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] tracking-[0.14em] text-[#9387a0]">{step.id}</span>
-                          {active && <span className="h-1.5 w-1.5 rounded-full bg-[#d4a7da]" />}
+                          <span className="text-[14px] tracking-[0.14em] text-[#9387a0]">{step.id}</span>
+                          {active && <span className="h-2 w-2 rounded-full bg-[#d4a7da]" />}
                         </div>
-                        <p className={`mt-1 text-[18px] leading-tight ${active ? 'text-[#f4eff7]' : 'text-[#ddd5e6]'}`}>
+                        <p className={`mt-1.5 text-[24px] leading-tight ${active ? 'text-[#f4eff7]' : 'text-[#ddd5e6]'}`}>
                           {step.label}
                         </p>
-                        <p className={`mt-1 text-[14px] leading-[1.45] ${active ? 'text-[#cdc5d6]' : 'text-[#a79cb5]'}`}>
+                        <p className={`mt-2 text-[18px] leading-[1.45] ${active ? 'text-[#cdc5d6]' : 'text-[#a79cb5]'}`}>
                           {step.detail}
                         </p>
                       </button>
@@ -128,13 +128,14 @@ export function LandingPage() {
                 </div>
               </div>
 
-              <div className="border border-[#6d6872]/70 bg-[#151022] p-4 md:p-5">
-                <div className="mb-4 flex items-center justify-between border-b border-[#6d6872]/55 pb-3 text-[11px] tracking-[0.16em] text-[#b5acbf]">
+              <div className="flex w-full justify-center">
+                <div className="w-full max-w-[820px] rounded-[12px] border border-[#6d6872]/70 bg-[#151022] p-5 md:p-6">
+                <div className="mb-5 flex items-center justify-between border-b border-[#6d6872]/55 pb-3 text-[13px] tracking-[0.16em] text-[#b5acbf]">
                   <span>VEIL / HOW IT WORKS</span>
                   <span>LIVE</span>
                 </div>
 
-                <div className="relative min-h-[310px] md:min-h-[340px]">
+                <div className="relative min-h-[420px] md:min-h-[460px]">
                   {HOW_IT_WORKS_STEPS.map((step, index) => (
                     <div
                       key={step.id}
@@ -145,6 +146,7 @@ export function LandingPage() {
                       <HowItWorksPreview index={index} />
                     </div>
                   ))}
+                </div>
                 </div>
               </div>
             </div>
@@ -222,9 +224,9 @@ export function LandingPage() {
 function HowItWorksPreview({ index }) {
   if (index === 0) {
     return (
-      <div className="space-y-5">
-        <p className="text-[12px] tracking-[0.16em] text-[#b9b0c5]">PROTECTED URL: https://veil.sh/p/site_47a8</p>
-        <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-3 text-center text-[13px]">
+      <div className="space-y-6">
+        <p className="text-[15px] tracking-[0.16em] text-[#b9b0c5]">PROTECTED URL: https://veil.sh/p/site_47a8</p>
+        <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4 text-center text-[16px]">
           <Node label="Client" />
           <Arrow />
           <Node label="VEIL" />
@@ -237,8 +239,8 @@ function HowItWorksPreview({ index }) {
 
   if (index === 1) {
     return (
-      <div className="space-y-4">
-        <p className="text-[13px] text-[#cfc7d9]">Classification</p>
+      <div className="space-y-5">
+        <p className="text-[16px] text-[#cfc7d9]">Classification</p>
         <ClassRow label="SAFE" pct={86} color="#8fd9a7" />
         <ClassRow label="SUSPICIOUS" pct={47} color="#f2c77a" />
         <ClassRow label="MALICIOUS" pct={64} color="#f09ca8" />
@@ -248,11 +250,11 @@ function HowItWorksPreview({ index }) {
 
   if (index === 2) {
     return (
-      <div className="rounded border border-[#7a7385] bg-[#120d1e] p-4">
-        <p className="text-[11px] tracking-[0.12em] text-[#d6cfde]">FINAL VERDICT</p>
-        <p className="mt-2 text-[22px] font-semibold text-[#f08a95]">MALICIOUS</p>
-        <p className="mt-1 text-[16px] text-[#f2cf90]">SQLi (High)</p>
-        <p className="mt-3 text-[14px] leading-[1.45] text-[#b8aec4]">
+      <div className="rounded-[10px] border border-[#7a7385] bg-[#120d1e] p-5">
+        <p className="text-[14px] tracking-[0.12em] text-[#d6cfde]">FINAL VERDICT</p>
+        <p className="mt-2 text-[30px] font-semibold text-[#f08a95]">MALICIOUS</p>
+        <p className="mt-1 text-[20px] text-[#f2cf90]">SQLi (High)</p>
+        <p className="mt-4 text-[18px] leading-[1.45] text-[#b8aec4]">
           Pattern matched boolean-based injection payload in query parameter `id`.
         </p>
       </div>
@@ -261,18 +263,18 @@ function HowItWorksPreview({ index }) {
 
   if (index === 3) {
     return (
-      <div className="overflow-hidden border border-[#6f687c]">
-        <div className="grid grid-cols-[120px_1fr_110px] border-b border-[#6f687c] bg-[#1a1527] px-3 py-2 text-[11px] tracking-[0.12em] text-[#aaa1b7]">
+      <div className="overflow-hidden rounded-[10px] border border-[#6f687c]">
+        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c] bg-[#1a1527] px-4 py-3 text-[14px] tracking-[0.12em] text-[#aaa1b7]">
           <span>STATUS</span>
           <span>REQUEST</span>
           <span>ACTION</span>
         </div>
-        <div className="grid grid-cols-[120px_1fr_110px] border-b border-[#6f687c]/60 bg-[#261420] px-3 py-2 text-[13px]">
+        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c]/60 bg-[#261420] px-4 py-3 text-[17px]">
           <span className="text-[#f08a95]">BLOCK</span>
           <span className="text-[#d0c8db]">GET /users?id=' OR 1=1</span>
           <span className="text-[#f08a95]">403</span>
         </div>
-        <div className="grid grid-cols-[120px_1fr_110px] bg-[#12211b] px-3 py-2 text-[13px]">
+        <div className="grid grid-cols-[150px_1fr_130px] bg-[#12211b] px-4 py-3 text-[17px]">
           <span className="text-[#8fd9a7]">FORWARD</span>
           <span className="text-[#d0c8db]">GET /products?page=2</span>
           <span className="text-[#8fd9a7]">200</span>
@@ -282,7 +284,7 @@ function HowItWorksPreview({ index }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <TimelineItem text="BYPASS FOUND" color="#f09ca8" />
       <TimelineItem text="PATCH DEPLOYED" color="#f2c77a" />
       <TimelineItem text="REPLAY BLOCKED" color="#8fd9a7" />
@@ -292,24 +294,24 @@ function HowItWorksPreview({ index }) {
 
 function Node({ label }) {
   return (
-    <div className="border border-[#6f687c] bg-[#1a1527] px-3 py-4 text-[#e5dfec]">
+    <div className="rounded-[8px] border border-[#6f687c] bg-[#1a1527] px-4 py-5 text-[#e5dfec]">
       {label}
     </div>
   )
 }
 
 function Arrow() {
-  return <span className="text-[#8f86a2]">-&gt;</span>
+  return <span className="text-[18px] text-[#8f86a2]">-&gt;</span>
 }
 
 function ClassRow({ label, pct, color }) {
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between text-[12px]">
+      <div className="mb-2 flex items-center justify-between text-[15px]">
         <span className="text-[#ddd5e6]">{label}</span>
         <span className="text-[#a79cb5]">{pct}%</span>
       </div>
-      <div className="h-2 overflow-hidden bg-[#241c31]">
+      <div className="h-3 overflow-hidden rounded-[5px] bg-[#241c31]">
         <div className="h-full" style={{ width: `${pct}%`, background: color }} />
       </div>
     </div>
@@ -318,8 +320,8 @@ function ClassRow({ label, pct, color }) {
 
 function TimelineItem({ text, color }) {
   return (
-    <div className="flex items-center gap-3 border border-[#6f687c] bg-[#1a1527] px-4 py-3 text-[13px] text-[#d8d0e2]">
-      <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+    <div className="flex items-center gap-4 rounded-[8px] border border-[#6f687c] bg-[#1a1527] px-5 py-4 text-[17px] text-[#d8d0e2]">
+      <span className="h-3 w-3 rounded-full" style={{ background: color }} />
       <span>{text}</span>
     </div>
   )
