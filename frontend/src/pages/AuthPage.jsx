@@ -19,10 +19,19 @@ export function AuthPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-140px)] items-center justify-center px-6">
+    <div className="relative min-h-[calc(100vh-140px)] overflow-hidden bg-[#1a1322]">
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(circle at top right, rgba(112,130,207,0.34) 0%, rgba(112,130,207,0.2) 14%, rgba(112,130,207,0.08) 28%, transparent 46%), radial-gradient(circle at bottom left, rgba(176,98,177,0.34) 0%, rgba(176,98,177,0.2) 16%, rgba(176,98,177,0.08) 31%, transparent 48%), radial-gradient(circle at 52% 38%, rgba(142,108,190,0.1) 0%, rgba(142,108,190,0.04) 24%, transparent 44%)',
+        }}
+      />
+
+      <div className="relative z-10 flex min-h-[calc(100vh-140px)] items-center justify-center px-6">
       <div className="w-full max-w-[600px]">
         {/* Card */}
-        <div className="rounded-2xl border border-border/60 bg-surface/60 px-8 py-10 backdrop-blur-sm md:px-10 md:py-12">
+        <div className="rounded-2xl border border-border/60 bg-[#1a1322] px-8 py-10 md:px-10 md:py-12">
           {/* Vibes icon */}
           <div className="mb-6 flex justify-center">
             <img
@@ -72,6 +81,7 @@ export function AuthPage() {
             Try the demo instead
           </a>
         </div>
+      </div>
       </div>
     </div>
   )
