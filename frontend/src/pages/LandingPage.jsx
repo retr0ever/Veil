@@ -84,17 +84,21 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="w-[calc(100%+3rem)] -mx-6 bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
-          <div className="h-px w-full bg-[#848188]/70" />
-          <div className="mx-auto max-w-[1450px] px-6 py-24 md:px-10 md:py-32">
+        <section className="relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(circle at top right, rgba(176,98,177,0.34) 0%, rgba(176,98,177,0.2) 8%, rgba(176,98,177,0.09) 17%, transparent 25%)',
+            }}
+          />
+
+          <div className="relative z-10 mx-auto max-w-[1450px] px-6 py-24 md:px-10 md:py-32">
             <div className="grid items-start gap-16 md:grid-cols-[0.42fr_0.58fr] lg:gap-20">
               <div>
-                <h2 className="text-[46px] font-semibold leading-[1.12] text-[#f4eff7] md:text-[52px]">
+                <h2 className="text-[46px] font-semibold leading-[1.12] text-[#f4eff7] text-right md:text-[52px]">
                   How it works
                 </h2>
-                <p className="mt-5 text-[22px] leading-[1.62] text-[#c7bfd0] md:text-[26px]">
-                  One URL change. Every request gets triaged, escalated, then logged.
-                </p>
 
                 <div className="mt-10 space-y-3">
                   {HOW_IT_WORKS_STEPS.map((step, index) => {
@@ -113,13 +117,13 @@ export function LandingPage() {
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-[14px] tracking-[0.14em] text-[#9387a0]">{step.id}</span>
+                          <span className="text-[16px] tracking-[0.14em] text-[#9387a0]">{step.id}</span>
                           {active && <span className="h-2 w-2 rounded-full bg-[#d4a7da]" />}
                         </div>
-                        <p className={`mt-1.5 text-[24px] leading-tight ${active ? 'text-[#f4eff7]' : 'text-[#ddd5e6]'}`}>
+                        <p className={`mt-1.5 text-[28px] leading-tight ${active ? 'text-[#f4eff7]' : 'text-[#ddd5e6]'}`}>
                           {step.label}
                         </p>
-                        <p className={`mt-2 text-[18px] leading-[1.45] ${active ? 'text-[#cdc5d6]' : 'text-[#a79cb5]'}`}>
+                        <p className={`mt-2 text-[21px] leading-[1.45] ${active ? 'text-[#cdc5d6]' : 'text-[#a79cb5]'}`}>
                           {step.detail}
                         </p>
                       </button>
@@ -128,7 +132,7 @@ export function LandingPage() {
                 </div>
               </div>
 
-              <div className="flex w-full justify-center">
+              <div className="flex w-full justify-center md:self-center">
                 <div className="w-full max-w-[820px] rounded-[12px] border border-[#6d6872]/70 bg-[#151022] p-5 md:p-6">
                 <div className="mb-5 flex items-center justify-between border-b border-[#6d6872]/55 pb-3 text-[13px] tracking-[0.16em] text-[#b5acbf]">
                   <span>VEIL / HOW IT WORKS</span>
@@ -153,7 +157,9 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="mt-12 w-full md:mt-10">
+        <section className="mt-12 w-[calc(100%+3rem)] -mx-6 md:mt-10 md:w-[calc(100%+6rem)] md:-mx-12">
+          <div className="h-px w-full bg-[#848188]/70" />
+          <div className="px-6 md:px-12">
           <div className="mx-auto hidden w-[clamp(520px,50vw,960px)] sm:block">
             <div className="relative aspect-square w-full">
               <div className="pointer-events-none absolute inset-0 z-20">
@@ -215,6 +221,8 @@ export function LandingPage() {
               ))}
             </div>
           </div>
+          </div>
+          <div className="mt-10 h-px w-full bg-[#848188]/70 md:mt-12" />
         </section>
       </div>
     </div>
