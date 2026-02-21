@@ -33,19 +33,29 @@
 }
 
 @theme {
-  --color-safe: #3ecf8e;
-  --color-suspicious: #f1b04a;
-  --color-blocked: #ec5e5e;
-  --color-agent: #63a7ff;
+  /* ── Palette pulled from landing page ── */
+  --color-safe: #8fd9a7;
+  --color-suspicious: #f2c77a;
+  --color-blocked: #f08a95;
+  --color-agent: #d4a7da;
+  --color-peek: #F4B6EB;
+  --color-poke: #b8a9d4;
+  --color-patch: #f1b461;
+
+  /* ── Surfaces & backgrounds ── */
   --color-bg: #1a1322;
-  --color-surface: #10141f;
-  --color-surface-2: #171c2b;
-  --color-border: #242b3b;
-  --color-text: #f2f6ff;
-  --color-muted: #8390aa;
-  --color-dim: #a8b0c3;
+  --color-surface: #151022;
+  --color-surface-2: #1e1730;
+  --color-border: #352d40;
+
+  /* ── Text ── */
+  --color-text: #f4eff7;
+  --color-muted: #9387a0;
+  --color-dim: #cbc4d2;
+
+  /* ── Fonts ── */
   --font-sans: 'ITC New Baskerville Roman', 'Times New Roman', serif;
-  --font-mono: 'ITC New Baskerville Roman', 'Times New Roman', serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
 }
 
 * {
@@ -62,12 +72,12 @@ body {
   margin: 0;
   padding: 0;
   background:
-    radial-gradient(circle at 18% -5%, rgba(99, 167, 255, 0.22), transparent 40%),
-    radial-gradient(circle at 88% 10%, rgba(62, 207, 142, 0.17), transparent 35%),
+    radial-gradient(circle at 18% -5%, rgba(112,130,207,0.18), transparent 40%),
+    radial-gradient(circle at 88% 10%, rgba(176,98,177,0.14), transparent 35%),
     var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
-  font-size: 24px;
+  font-size: 16px;
   font-style: normal;
   -webkit-font-smoothing: antialiased;
 }
@@ -77,11 +87,11 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0c101b;
+  background: #110c1a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a3348;
+  background: #3d3548;
   border-radius: 4px;
 }
 
@@ -123,4 +133,15 @@ a {
   text-transform: uppercase;
   letter-spacing: 0.22em;
   -webkit-text-stroke: 0.1px currentColor;
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }

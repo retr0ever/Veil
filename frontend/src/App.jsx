@@ -5,7 +5,9 @@ import { ProjectsPage } from './pages/ProjectsPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { ProjectDashboardPage } from './pages/ProjectDashboardPage'
 import { NavBar } from './components/NavBar'
-import { PUBLIC_NAV_LINKS, APP_NAV_LINKS } from './lib/navLinks'
+import { PUBLIC_NAV_LINKS } from './lib/navLinks'
+
+/* ── Helpers ─────────────────────────────────────────────── */
 
 function normalizePath(pathname) {
   if (!pathname) return '/'
@@ -18,13 +20,14 @@ function normalizePath(pathname) {
 function getProjectId(pathname) {
   const match = pathname.match(/^\/app\/projects\/([^/]+)$/)
   if (!match) return null
-
   try {
     return decodeURIComponent(match[1])
   } catch {
     return match[1]
   }
 }
+
+/* ── Shared 404 ──────────────────────────────────────────── */
 
 function NotFoundPage() {
   return (
@@ -38,51 +41,56 @@ function NotFoundPage() {
   )
 }
 
+/* ── Route definitions ───────────────────────────────────── */
+
+/**
+ * PUBLIC routes (/, /demo) -- rendered with the top NavBar, no sidebar.
+ * STANDALONE routes (/auth) -- rendered directly with no shell (page controls its own layout).
+ * APP routes (/app/*) -- each page wraps itself in <AppShell> with the sidebar.
+ */
+
+const PUBLIC_ROUTES = ['/', '/demo', '/auth']
+
 function App() {
   const pathname = normalizePath(window.location.pathname)
   const projectId = getProjectId(pathname)
 
-  // Let /auth/github* hit the backend directly (OAuth flow)
+  // OAuth callback -- let it pass through to the backend
   if (pathname.startsWith('/auth/github')) return null
 
-  const navLinks = pathname.startsWith('/app') || Boolean(projectId)
-    ? APP_NAV_LINKS
-    : PUBLIC_NAV_LINKS
+  const isPublic = PUBLIC_ROUTES.includes(pathname)
 
-  const activeHref = projectId
-    ? '/app/projects'
-    : pathname === '/demo'
-      ? '/demo'
-      : pathname === '/auth'
-        ? '/auth'
-        : pathname === '/app/onboarding'
-          ? '/app/onboarding'
-          : pathname === '/app/projects'
-            ? '/app/projects'
-            : '/'
-
+  /* ── Resolve page component ── */
   let page = <NotFoundPage />
-  if (pathname === '/') page = <LandingPage />
-  else if (pathname === '/demo') page = <DemoPage />
-  else if (pathname === '/auth') page = <AuthPage />
-  else if (pathname === '/app/projects') page = <ProjectsPage />
+  if (pathname === '/')                   page = <LandingPage />
+  else if (pathname === '/demo')          page = <DemoPage />
+  else if (pathname === '/auth')          page = <AuthPage />
+  else if (pathname === '/app/projects')  page = <ProjectsPage />
   else if (pathname === '/app/onboarding') page = <OnboardingPage />
-  else if (projectId) page = <ProjectDashboardPage siteId={projectId} />
+  else if (projectId)                     page = <ProjectDashboardPage siteId={projectId} />
 
-  return (
-    <div className="min-h-screen bg-[#1a1322] text-text">
-      <div className="sticky top-0 z-50 bg-[#1a1322] px-6 pt-10 md:px-12 md:pt-8">
-        <NavBar
-          links={navLinks}
-          activeHref={activeHref}
-          size="hero"
-          showDivider
-          dividerClassName="mt-5 w-[calc(100%+3rem)] -mx-6 md:w-[calc(100%+6rem)] md:-mx-12"
-        />
+  /* ── Public shell: NavBar + page, NO sidebar ── */
+  if (isPublic) {
+    const activeHref = pathname === '/demo' ? '/demo' : pathname === '/auth' ? '/auth' : '/'
+
+    return (
+      <div className="min-h-screen bg-[#1a1322] text-text">
+        <div className="sticky top-0 z-50 bg-[#1a1322] px-6 pt-10 md:px-12 md:pt-8">
+          <NavBar
+            links={PUBLIC_NAV_LINKS}
+            activeHref={activeHref}
+            size="hero"
+            showDivider
+            dividerClassName="mt-5 w-[calc(100%+3rem)] -mx-6 md:w-[calc(100%+6rem)] md:-mx-12"
+          />
+        </div>
+        {page}
       </div>
-      {page}
-    </div>
-  )
+    )
+  }
+
+  /* ── App shell: each /app/* page renders its own <AppShell> sidebar wrapper ── */
+  return page
 }
 
 export default App

@@ -21,12 +21,12 @@ export function BlockRateChart() {
 
   return (
     <div className="flex flex-col">
-      <div className="px-4 py-2.5 border-b border-border text-muted text-[12px] font-medium">
+      <div className="px-4 py-2.5 border-b border-border text-muted text-[14px] font-medium">
         Protection timeline
       </div>
       <div className="p-4">
         {history.length === 0 && (
-          <p className="text-[13px] text-muted py-4 text-center">Collecting rule history...</p>
+          <p className="text-[15px] text-muted py-4 text-center">Collecting rule history...</p>
         )}
         {history.length > 0 && (
           <div className="relative pl-6">
@@ -46,10 +46,10 @@ export function BlockRateChart() {
                   }`} />
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <p className={`text-[13px] font-medium ${isLatest ? 'text-safe' : 'text-text'}`}>
+                      <p className={`text-[15px] font-medium ${isLatest ? 'text-safe' : 'text-text'}`}>
                         Rule set v{rule.version}
                       </p>
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                      <span className={`rounded px-1.5 py-0.5 text-[12px] font-medium ${
                         source === 'AI patch'
                           ? 'bg-agent/10 text-agent'
                           : 'bg-border/40 text-muted'
@@ -57,12 +57,12 @@ export function BlockRateChart() {
                         {source}
                       </span>
                       {isLatest && (
-                        <span className="rounded bg-safe/10 px-1.5 py-0.5 text-[10px] font-semibold text-safe">
+                        <span className="rounded bg-safe/10 px-1.5 py-0.5 text-[12px] font-semibold text-safe">
                           Active
                         </span>
                       )}
                     </div>
-                    {time && <p className="text-[11px] text-muted mt-0.5">{time}</p>}
+                    {time && <p className="text-[13px] text-muted mt-0.5">{time}</p>}
                   </div>
                 </div>
               )
