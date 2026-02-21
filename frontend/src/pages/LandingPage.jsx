@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 
 const AGENT_ITEMS = [
@@ -63,7 +63,18 @@ const HOW_IT_WORKS_STEPS = [
 
 export function LandingPage() {
   const [activeHowItWorks, setActiveHowItWorks] = useState(0)
+  const [activeAgent, setActiveAgent] = useState('all')
+  const [agentPanelVisible, setAgentPanelVisible] = useState(true)
   const { user, loading } = useAuth()
+
+  useEffect(() => {
+    setAgentPanelVisible(false)
+    const timeout = window.setTimeout(() => setAgentPanelVisible(true), 24)
+    return () => window.clearTimeout(timeout)
+  }, [activeAgent])
+
+  const activeAgentDetails = AGENT_DETAILS[activeAgent]
+  const activeAgentBorderColor = AGENT_BORDER_COLORS[activeAgent]
 
   return (
     <div className="min-h-screen w-full bg-[#1a1322] text-[#f4eff7]">
