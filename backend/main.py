@@ -98,6 +98,7 @@ RATE_LIMITS = {
     "proxy": (60, 60),       # 60 req/min per IP
     "auth": (10, 60),        # 10 req/min per IP
     "api": (60, 60),         # 60 req/min per IP
+    "agents": (3, 300),      # 3 req/5min per IP (expensive LLM calls)
 }
 
 
@@ -573,14 +574,28 @@ async def classify_only(req: ClassifyRequest, request: Request):
     return result
 
 
-# --- Dashboard API ---
+# --- Auth helper for dashboard API ---
+async def require_auth(request: Request) -> dict | JSONResponse:
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Authentication required"})
+    return user
+
+
+# --- Dashboard API (all require auth) ---
 @app.get("/api/stats")
-async def get_stats():
+async def get_stats(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
     return await get_stats_data()
 
 
 @app.get("/api/threats")
-async def get_threats():
+async def get_threats(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
     async with get_db() as db:
         cursor = await db.execute("SELECT * FROM threats ORDER BY discovered_at DESC")
         rows = await cursor.fetchall()
@@ -602,7 +617,10 @@ async def get_threats():
 
 
 @app.get("/api/agents")
-async def get_agent_log():
+async def get_agent_log(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
     async with get_db() as db:
         cursor = await db.execute("SELECT * FROM agent_log ORDER BY timestamp DESC LIMIT 50")
         rows = await cursor.fetchall()
@@ -620,7 +638,10 @@ async def get_agent_log():
 
 
 @app.get("/api/requests")
-async def get_requests():
+async def get_requests(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
     async with get_db() as db:
         cursor = await db.execute("SELECT * FROM request_log ORDER BY timestamp DESC LIMIT 100")
         rows = await cursor.fetchall()
@@ -641,29 +662,48 @@ async def get_requests():
 
 
 @app.get("/api/rules")
-async def get_rules():
+async def get_rules(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
     async with get_db() as db:
         cursor = await db.execute("SELECT version, updated_at, updated_by FROM rules ORDER BY version DESC")
         rows = await cursor.fetchall()
     return [{"version": r[0], "updated_at": r[1], "updated_by": r[2]} for r in rows]
 
 
-# --- Trigger agents manually ---
+# --- Trigger agents manually (auth + rate limited) ---
 @app.post("/api/agents/peek/run")
-async def trigger_peek():
+async def trigger_peek(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
+    if r := check_rate_limit(request, "agents"):
+        return r
     discovered = await peek.run()
     return {"discovered": discovered}
 
 
 @app.post("/api/agents/poke/run")
-async def trigger_poke():
+async def trigger_poke(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
+    if r := check_rate_limit(request, "agents"):
+        return r
     bypasses = await poke.run()
     return {"bypasses": len(bypasses), "details": bypasses}
 
 
 @app.post("/api/agents/cycle")
-async def trigger_full_cycle():
+async def trigger_full_cycle(request: Request):
     """Run a full Peek -> Poke -> Patch cycle manually."""
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
+    if r := check_rate_limit(request, "agents"):
+        return r
+
     discovered = await peek.run()
     await ws_manager.broadcast({"type": "agent", "agent": "peek", "status": "done", "detail": f"Found {discovered} new techniques"})
 
