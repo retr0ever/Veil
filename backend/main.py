@@ -716,6 +716,14 @@ async def ping():
     return {"ok": True}
 
 
+@app.post("/v1/classify")
+async def api_classify(req: ClassifyRequest, request: Request):
+    """Refined classification using the full pipeline (regex + LLM)."""
+    if r := check_rate_limit(request, "classify"):
+        return r
+    return await classify_request(req.message)
+
+
 @app.post("/external/crusoe/classify")
 async def crusoe_classify(req: ClassifyRequest, request: Request):
     """Direct direct access to Crusoe LLM classification with prompt caching."""
