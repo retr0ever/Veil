@@ -77,7 +77,7 @@ export function LandingPage() {
   return (
     <div className="min-h-screen w-full bg-[#1a1322] text-[#f4eff7]">
       <div className="flex min-h-screen w-full flex-col px-6 pb-16 md:px-12">
-        <section className="relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
+        <section className="order-1 relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
           <div
             className="pointer-events-none absolute inset-0"
             style={{
@@ -121,7 +121,7 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
+        <section className="order-2 relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
           <div
             className="pointer-events-none absolute inset-0"
             style={{
@@ -190,7 +190,7 @@ export function LandingPage() {
         </section>
 
         <section
-          className="relative mt-12 w-[calc(100%+3rem)] -mx-6 bg-[#1a1322] bg-cover bg-center bg-no-repeat md:mt-10 md:w-[calc(100%+6rem)] md:-mx-12"
+          className="order-3 relative mt-12 w-[calc(100%+3rem)] -mx-6 bg-[#1a1322] bg-cover bg-center bg-no-repeat md:mt-10 md:w-[calc(100%+6rem)] md:-mx-12"
           style={{ backgroundImage: "url('/images/rays.png')" }}
         >
           <div className="h-px w-full bg-[#848188]/70" />
@@ -226,7 +226,7 @@ export function LandingPage() {
                       loading="lazy"
                     />
                     <div
-                      className="absolute inset-0 grid grid-cols-3"
+                      className="absolute left-[8%] right-[8%] top-[34%] grid h-[38%] grid-cols-3"
                       onMouseLeave={() => setActiveAgent('all')}
                     >
                       {AGENT_ITEMS.map((agent) => (
@@ -275,7 +275,7 @@ export function LandingPage() {
                   className="mx-auto h-auto w-full object-contain"
                   loading="lazy"
                 />
-                <div className="absolute inset-0 grid grid-cols-3">
+                <div className="absolute left-[8%] right-[8%] top-[34%] grid h-[38%] grid-cols-3">
                   {AGENT_ITEMS.map((agent) => (
                     <button
                       key={agent.id}
