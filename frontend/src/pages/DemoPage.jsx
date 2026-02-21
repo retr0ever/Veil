@@ -62,7 +62,7 @@ export function DemoPage() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <main className="mx-auto max-w-7xl px-5 pb-6 pt-8">
+      <main className="mx-auto max-w-7xl px-5 pb-6 pt-0">
         <section className="mb-4 rounded-2xl border border-border bg-surface p-6">
           <h1 className="text-2xl font-semibold tracking-tight">Try Veil</h1>
           <p className="mt-2 text-[14px] text-dim">

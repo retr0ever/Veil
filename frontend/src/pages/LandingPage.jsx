@@ -1,13 +1,45 @@
+import { useState } from 'react'
+
 const agents = [
   { id: 'peek', label: 'PEEK', src: '/svg/2.png', shiftClass: 'translate-y-0' },
   { id: 'poke', label: 'POKE', src: '/svg/3.png', shiftClass: 'translate-y-[2px]' },
   { id: 'patch', label: 'PATCH', src: '/svg/4.png', shiftClass: 'translate-y-[4px]' },
 ]
 
+const HOW_IT_WORKS_STEPS = [
+  {
+    id: '01',
+    label: 'Drop-in reverse proxy',
+    detail: 'Point traffic at Veil instead of your backend - no code changes.',
+  },
+  {
+    id: '02',
+    label: 'Fast first-pass triage',
+    detail: 'Llama on Crusoe classifies SAFE / SUSPICIOUS / MALICIOUS.',
+  },
+  {
+    id: '03',
+    label: 'Deep analysis on flagged traffic',
+    detail: 'Claude reviews suspicious requests for a final verdict + category.',
+  },
+  {
+    id: '04',
+    label: 'Block or forward instantly',
+    detail: 'Malicious is blocked; safe traffic reaches your backend unchanged.',
+  },
+  {
+    id: '05',
+    label: 'Red-team -> patch -> verify',
+    detail: 'Agents generate bypasses and auto-update detection prompts.',
+  },
+]
+
 export function LandingPage() {
+  const [activeHowItWorks, setActiveHowItWorks] = useState(0)
+
   return (
     <div className="min-h-screen w-full bg-[#1a1322] text-[#f4eff7]">
-      <div className="flex min-h-screen w-full flex-col px-6 pb-16 pt-10 md:px-12 md:pt-8">
+      <div className="flex min-h-screen w-full flex-col px-6 pb-16 md:px-12">
         <section className="relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
           <div
             className="pointer-events-none absolute inset-0"
@@ -50,11 +82,76 @@ export function LandingPage() {
               </div>
             </div>
           </div>
-
-          <div className="absolute inset-x-0 bottom-0 h-px bg-[#848188]/70" />
         </section>
 
-        <section className="mt-10 w-full md:mt-8">
+        <section className="w-[calc(100%+3rem)] -mx-6 bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
+          <div className="h-px w-full bg-[#848188]/70" />
+          <div className="mx-auto max-w-[1180px] px-6 py-20 md:px-8 md:py-24">
+            <div className="grid items-start gap-12 md:grid-cols-[0.42fr_0.58fr] lg:gap-16">
+              <div>
+                <h2 className="text-[36px] font-semibold leading-[1.12] text-[#f4eff7] md:text-[40px]">
+                  How it works
+                </h2>
+                <p className="mt-4 text-[18px] leading-[1.6] text-[#c7bfd0] md:text-[20px]">
+                  One URL change. Every request gets triaged, escalated, then logged.
+                </p>
+
+                <div className="mt-8 space-y-2">
+                  {HOW_IT_WORKS_STEPS.map((step, index) => {
+                    const active = index === activeHowItWorks
+                    return (
+                      <button
+                        key={step.id}
+                        type="button"
+                        onMouseEnter={() => setActiveHowItWorks(index)}
+                        onFocus={() => setActiveHowItWorks(index)}
+                        onClick={() => setActiveHowItWorks(index)}
+                        className={`w-full border-l-2 px-4 py-3 text-left transition-colors ${
+                          active
+                            ? 'border-[#d4a7da] bg-white/[0.03]'
+                            : 'border-transparent hover:border-[#8d809a]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] tracking-[0.14em] text-[#9387a0]">{step.id}</span>
+                          {active && <span className="h-1.5 w-1.5 rounded-full bg-[#d4a7da]" />}
+                        </div>
+                        <p className={`mt-1 text-[18px] leading-tight ${active ? 'text-[#f4eff7]' : 'text-[#ddd5e6]'}`}>
+                          {step.label}
+                        </p>
+                        <p className={`mt-1 text-[14px] leading-[1.45] ${active ? 'text-[#cdc5d6]' : 'text-[#a79cb5]'}`}>
+                          {step.detail}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="border border-[#6d6872]/70 bg-[#151022] p-4 md:p-5">
+                <div className="mb-4 flex items-center justify-between border-b border-[#6d6872]/55 pb-3 text-[11px] tracking-[0.16em] text-[#b5acbf]">
+                  <span>VEIL / HOW IT WORKS</span>
+                  <span>LIVE</span>
+                </div>
+
+                <div className="relative min-h-[310px] md:min-h-[340px]">
+                  {HOW_IT_WORKS_STEPS.map((step, index) => (
+                    <div
+                      key={step.id}
+                      className={`absolute inset-0 transition-opacity duration-200 ${
+                        activeHowItWorks === index ? 'opacity-100' : 'pointer-events-none opacity-0'
+                      }`}
+                    >
+                      <HowItWorksPreview index={index} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-12 w-full md:mt-10">
           <div className="mx-auto hidden w-[clamp(520px,50vw,960px)] sm:block">
             <div className="relative aspect-square w-full">
               <div className="pointer-events-none absolute inset-0 z-20">
@@ -118,6 +215,112 @@ export function LandingPage() {
           </div>
         </section>
       </div>
+    </div>
+  )
+}
+
+function HowItWorksPreview({ index }) {
+  if (index === 0) {
+    return (
+      <div className="space-y-5">
+        <p className="text-[12px] tracking-[0.16em] text-[#b9b0c5]">PROTECTED URL: https://veil.sh/p/site_47a8</p>
+        <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-3 text-center text-[13px]">
+          <Node label="Client" />
+          <Arrow />
+          <Node label="VEIL" />
+          <Arrow />
+          <Node label="Upstream API" />
+        </div>
+      </div>
+    )
+  }
+
+  if (index === 1) {
+    return (
+      <div className="space-y-4">
+        <p className="text-[13px] text-[#cfc7d9]">Classification</p>
+        <ClassRow label="SAFE" pct={86} color="#8fd9a7" />
+        <ClassRow label="SUSPICIOUS" pct={47} color="#f2c77a" />
+        <ClassRow label="MALICIOUS" pct={64} color="#f09ca8" />
+      </div>
+    )
+  }
+
+  if (index === 2) {
+    return (
+      <div className="rounded border border-[#7a7385] bg-[#120d1e] p-4">
+        <p className="text-[11px] tracking-[0.12em] text-[#d6cfde]">FINAL VERDICT</p>
+        <p className="mt-2 text-[22px] font-semibold text-[#f08a95]">MALICIOUS</p>
+        <p className="mt-1 text-[16px] text-[#f2cf90]">SQLi (High)</p>
+        <p className="mt-3 text-[14px] leading-[1.45] text-[#b8aec4]">
+          Pattern matched boolean-based injection payload in query parameter `id`.
+        </p>
+      </div>
+    )
+  }
+
+  if (index === 3) {
+    return (
+      <div className="overflow-hidden border border-[#6f687c]">
+        <div className="grid grid-cols-[120px_1fr_110px] border-b border-[#6f687c] bg-[#1a1527] px-3 py-2 text-[11px] tracking-[0.12em] text-[#aaa1b7]">
+          <span>STATUS</span>
+          <span>REQUEST</span>
+          <span>ACTION</span>
+        </div>
+        <div className="grid grid-cols-[120px_1fr_110px] border-b border-[#6f687c]/60 bg-[#261420] px-3 py-2 text-[13px]">
+          <span className="text-[#f08a95]">BLOCK</span>
+          <span className="text-[#d0c8db]">GET /users?id=' OR 1=1</span>
+          <span className="text-[#f08a95]">403</span>
+        </div>
+        <div className="grid grid-cols-[120px_1fr_110px] bg-[#12211b] px-3 py-2 text-[13px]">
+          <span className="text-[#8fd9a7]">FORWARD</span>
+          <span className="text-[#d0c8db]">GET /products?page=2</span>
+          <span className="text-[#8fd9a7]">200</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <TimelineItem text="BYPASS FOUND" color="#f09ca8" />
+      <TimelineItem text="PATCH DEPLOYED" color="#f2c77a" />
+      <TimelineItem text="REPLAY BLOCKED" color="#8fd9a7" />
+    </div>
+  )
+}
+
+function Node({ label }) {
+  return (
+    <div className="border border-[#6f687c] bg-[#1a1527] px-3 py-4 text-[#e5dfec]">
+      {label}
+    </div>
+  )
+}
+
+function Arrow() {
+  return <span className="text-[#8f86a2]">-&gt;</span>
+}
+
+function ClassRow({ label, pct, color }) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-[12px]">
+        <span className="text-[#ddd5e6]">{label}</span>
+        <span className="text-[#a79cb5]">{pct}%</span>
+      </div>
+      <div className="h-2 overflow-hidden bg-[#241c31]">
+        <div className="h-full" style={{ width: `${pct}%`, background: color }} />
+      </div>
+    </div>
+  )
+}
+
+function TimelineItem({ text, color }) {
+  return (
+    <div className="flex items-center gap-3 border border-[#6f687c] bg-[#1a1527] px-4 py-3 text-[13px] text-[#d8d0e2]">
+      <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+      <span>{text}</span>
     </div>
   )
 }

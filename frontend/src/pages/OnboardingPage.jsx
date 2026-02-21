@@ -66,7 +66,7 @@ export function OnboardingPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-bg text-text">
-      <main className="flex flex-1 items-center justify-center px-4 py-10">
+      <main className="flex flex-1 items-center justify-center px-4 pb-10 pt-0">
         <div className="w-full max-w-2xl rounded-2xl border border-border bg-surface p-6">
           <p className="text-[12px] tracking-[0.2em] text-dim">ONBOARDING</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight">Create protected project</h1>

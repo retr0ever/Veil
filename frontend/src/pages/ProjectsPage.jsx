@@ -41,7 +41,7 @@ export function ProjectsPage() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto max-w-6xl px-6 pb-8 pt-0">
         <div className="mb-5 flex items-center justify-between gap-4">
           <h1 className="text-xl font-semibold">Projects</h1>
           <div className="flex items-center gap-3">

@@ -71,7 +71,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#1a1322] text-text">
-      <div className="sticky top-0 z-50 bg-[#1a1322] px-6 pb-2 pt-10 md:px-12 md:pt-8">
+      <div className="sticky top-0 z-50 bg-[#1a1322] px-6 pt-10 md:px-12 md:pt-8">
         <NavBar
           links={navLinks}
           activeHref={activeHref}

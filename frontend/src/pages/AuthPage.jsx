@@ -18,7 +18,7 @@ export function AuthPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-bg text-text">
-      <main className="flex flex-1 items-center justify-center px-4 py-10">
+      <main className="flex flex-1 items-center justify-center px-4 pb-10 pt-0">
         <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6">
           <p className="font-logo text-[22px] leading-none text-dim">VEIL</p>
 
