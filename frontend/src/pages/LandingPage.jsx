@@ -19,14 +19,22 @@ export function LandingPage() {
           dividerClassName="mt-5 w-[calc(100%+3rem)] -mx-6 md:w-[calc(100%+6rem)] md:-mx-12"
         />
 
-        <section className="w-[calc(100%+3rem)] -mx-6 bg-[radial-gradient(circle_at_top_left,rgba(106,124,191,0.2),transparent_50%),radial-gradient(circle_at_bottom_right,rgba(137,86,171,0.22),transparent_56%),#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
-          <div className="mx-auto max-w-[1600px] px-2 py-24 md:px-4 md:py-36">
+        <section className="relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(circle at top left, rgba(112,130,207,0.38) 0%, rgba(112,130,207,0.22) 15%, rgba(112,130,207,0.1) 28%, transparent 40%), radial-gradient(circle at bottom right, rgba(176,98,177,0.34) 0%, rgba(176,98,177,0.2) 14%, rgba(176,98,177,0.09) 28%, transparent 42%)',
+            }}
+          />
+
+          <div className="relative z-10 mx-auto max-w-[1600px] px-2 py-24 md:px-4 md:py-36">
             <div className="grid items-center gap-10 md:flex md:items-center md:justify-between md:gap-20">
-              <div className="max-w-[760px]">
+              <div className="max-w-[900px]">
                 <h1 className="text-[44px] font-semibold leading-[1.08] text-[#f8f4fb] md:text-[56px]">
                   The first self-improving firewall.
                 </h1>
-                <p className="mt-6 text-[18px] leading-[1.6] text-[#cbc4d2] md:text-[20px]">
+                <p className="mt-6 text-[21px] leading-[1.55] text-[#cbc4d2] md:text-[25px]">
                   Drop-in reverse proxy that blocks malicious requests before they reach your backend.
                   When something bypasses, Veil red-teams itself and auto-patches its detection rules, then verifies the fix by replay.
                 </p>
@@ -35,22 +43,26 @@ export function LandingPage() {
               <div className="w-full md:w-[470px] md:shrink-0">
                 <a
                   href="/app/projects"
-                  className="block rounded-[12px] bg-[#f1b461] px-8 py-7 text-[#1b1525] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                  className="block rounded-[12px] bg-[#f1b461] px-8 py-7 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                  style={{ color: '#1a1322' }}
                 >
-                  <span className="block text-[34px] leading-[0.9] tracking-[0.06em] md:text-[38px]">OPEN</span>
-                  <span className="mt-1 block text-[34px] leading-[0.9] tracking-[0.06em] md:text-[38px]">PROJECTS</span>
+                  <span className="block text-[34px] leading-[0.9] tracking-[0.06em] !text-[#1a1322] md:text-[38px]">OPEN</span>
+                  <span className="mt-1 block text-[34px] leading-[0.9] tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROJECTS</span>
                 </a>
 
                 <a
                   href="/app/onboarding"
-                  className="mt-5 block rounded-[12px] bg-[#f0a9e6] px-8 py-7 text-[#1b1525] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                  className="mt-5 block rounded-[12px] bg-[#f0a9e6] px-8 py-7 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                  style={{ color: '#1a1322' }}
                 >
-                  <span className="block text-[34px] leading-[0.9] tracking-[0.06em] md:text-[38px]">START</span>
-                  <span className="mt-1 block text-[34px] leading-[0.9] tracking-[0.06em] md:text-[38px]">PROTECTING</span>
+                  <span className="block text-[34px] leading-[0.9] tracking-[0.06em] !text-[#1a1322] md:text-[38px]">START</span>
+                  <span className="mt-1 block text-[34px] leading-[0.9] tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROTECTING</span>
                 </a>
               </div>
             </div>
           </div>
+
+          <div className="absolute inset-x-0 bottom-0 h-px bg-[#848188]/70" />
         </section>
 
         <section className="mt-10 w-full md:mt-8">
