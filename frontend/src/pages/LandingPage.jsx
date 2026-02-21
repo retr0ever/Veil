@@ -96,11 +96,7 @@ export function LandingPage() {
           <div className="relative z-10 mx-auto max-w-[1450px] px-6 py-24 md:px-10 md:py-32">
             <div className="grid items-start gap-16 md:grid-cols-[0.42fr_0.58fr] lg:gap-20">
               <div>
-                <h2 className="text-[46px] font-semibold leading-[1.12] text-[#f4eff7] text-right md:text-[52px]">
-                  How it works
-                </h2>
-
-                <div className="mt-10 space-y-3">
+                <div className="space-y-3">
                   {HOW_IT_WORKS_STEPS.map((step, index) => {
                     const active = index === activeHowItWorks
                     return (
