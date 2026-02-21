@@ -34,6 +34,24 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 _serializer = URLSafeTimedSerializer(SESSION_SECRET)
 
+# --- Prompt Cache ---
+_prompt_cache = {
+    "prompt": None,
+    "last_fetch": 0
+}
+PROMPT_CACHE_TTL = 30  # 30 seconds
+
+
+async def get_cached_crusoe_prompt() -> str:
+    """Fetch the Crusoe prompt from DB with a 30s cache."""
+    now = time.time()
+    if _prompt_cache["prompt"] is None or (now - _prompt_cache["last_fetch"]) > PROMPT_CACHE_TTL:
+        rules = await get_current_rules()
+        if rules:
+            _prompt_cache["prompt"] = rules["crusoe_prompt"]
+            _prompt_cache["last_fetch"] = now
+    return _prompt_cache["prompt"] or ""
+
 
 def create_session_cookie(user_id: int) -> str:
     return _serializer.dumps(user_id)
@@ -693,12 +711,22 @@ async def proxy(site_id: str, path: str, request: Request):
         )
 
 
-# --- Classification-only endpoint (used by Poke) ---
-@app.post("/v1/classify")
-async def classify_only(req: ClassifyRequest, request: Request):
-    if r := check_rate_limit(request, "classify"):
+@app.get("/ping")
+async def ping():
+    return {"ok": True}
+
+
+@app.post("/external/crusoe/classify")
+async def crusoe_classify(req: ClassifyRequest, request: Request):
+    """Direct direct access to Crusoe LLM classification with prompt caching."""
+    if r := check_rate_limit(request, "api"):
         return r
-    result = await classify_request(req.message)
+    
+    prompt = await get_cached_crusoe_prompt()
+    if not prompt:
+        return JSONResponse(status_code=500, content={"error": "Crusoe prompt not available in database"})
+        
+    result = await crusoe_classifier.classify(req.message, prompt)
     return result
 
 
@@ -798,6 +826,66 @@ async def get_rules(request: Request):
         cursor = await db.execute("SELECT version, updated_at, updated_by FROM rules ORDER BY version DESC")
         rows = await cursor.fetchall()
     return [{"version": r[0], "updated_at": r[1], "updated_by": r[2]} for r in rows]
+
+
+@app.get("/api/analytics/threat-distribution")
+async def get_threat_distribution(request: Request):
+    """Aggregate threats by category for SIG track analytics."""
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
+        
+    async with get_db() as db:
+        cursor = await db.execute("""
+            SELECT category, 
+                   COUNT(*) as total, 
+                   SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as patched
+            FROM threats 
+            GROUP BY category
+        """)
+        rows = await cursor.fetchall()
+        
+    return [
+        {
+            "category": r[0],
+            "total": r[1],
+            "patched": r[2],
+            "exposed": r[1] - r[2]
+        }
+        for r in rows
+    ]
+
+
+@app.get("/api/compliance/report")
+async def get_compliance_report(request: Request):
+    """Generate a formal security posture report for BearingPoint track."""
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
+
+    stats = await get_stats_data()
+    
+    async with get_db() as db:
+        # Get recent critical patches
+        cursor = await db.execute("SELECT technique_name, patched_at FROM threats WHERE blocked = 1 ORDER BY patched_at DESC LIMIT 5")
+        patches = [{"technique": r[0], "date": r[1]} for r in await cursor.fetchall()]
+        
+        # Get agent activity summary
+        cursor = await db.execute("SELECT COUNT(*), agent FROM agent_log GROUP BY agent")
+        agent_stats = {r[1]: r[0] for r in await cursor.fetchall()}
+
+    return {
+        "generated_at": datetime.utcnow().isoformat(),
+        "security_score": stats["block_rate"],
+        "summary": {
+            "total_threats_identified": stats["total_threats"],
+            "vulnerabilities_remediated": stats["threats_blocked"],
+            "rules_version": stats["rules_version"]
+        },
+        "recent_hardened_assets": patches,
+        "agent_activity": agent_stats,
+        "compliance_status": "HIGH" if stats["block_rate"] > 80 else "MEDIUM"
+    }
 
 
 # --- Trigger agents manually (auth + rate limited) ---

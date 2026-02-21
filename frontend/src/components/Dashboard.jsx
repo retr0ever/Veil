@@ -5,6 +5,7 @@ import { RequestFeed } from './RequestFeed'
 import { AgentLog, AgentPipeline } from './AgentLog'
 import { ThreatTable } from './ThreatTable'
 import { BlockRateChart } from './BlockRateChart'
+import { ComplianceView } from './ComplianceView'
 import { NavBar } from './NavBar'
 import { APP_NAV_LINKS } from '../lib/navLinks'
 import { humaniseRequest, humaniseAgentEvent, humaniseAttackType, relativeTime } from '../lib/humanise'
@@ -13,6 +14,7 @@ const tabs = [
   { key: 'site', label: 'Your Site' },
   { key: 'agents', label: 'Agents' },
   { key: 'threats', label: 'Threat Library' },
+  { key: 'compliance', label: 'Intelligence' },
   { key: 'setup', label: 'Setup' },
 ]
 
@@ -62,7 +64,7 @@ export function Dashboard({ site, projectName, user, logout }) {
         const data = await res.json()
         setLastCycle(data)
       }
-    } catch {}
+    } catch { }
     setCycleRunning(false)
   }
 
@@ -166,11 +168,10 @@ export function Dashboard({ site, projectName, user, logout }) {
             key={tab.key}
             type="button"
             onClick={() => setActiveTab(tab.key)}
-            className={`rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors ${
-              activeTab === tab.key
+            className={`rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors ${activeTab === tab.key
                 ? 'bg-bg text-text'
                 : 'bg-transparent text-muted hover:text-text'
-            }`}
+              }`}
           >
             {tab.label}
           </button>
@@ -235,9 +236,8 @@ export function Dashboard({ site, projectName, user, logout }) {
               )}
               {mergedFeed.map((item, i) => (
                 <div key={i} className="px-4 py-2.5 border-b border-border/40 flex items-center gap-3">
-                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    item.kind === 'agent' ? 'bg-agent' : item.blocked ? 'bg-blocked' : 'bg-suspicious'
-                  }`} />
+                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.kind === 'agent' ? 'bg-agent' : item.blocked ? 'bg-blocked' : 'bg-suspicious'
+                    }`} />
                   <span className={`flex-1 text-[13px] ${item.color}`}>{item.summary}</span>
                   <span className="text-[11px] text-muted shrink-0">{relativeTime(item.timestamp)}</span>
                   {item.blocked && (
@@ -368,11 +368,10 @@ export function Dashboard({ site, projectName, user, logout }) {
                   {testResults.map((r) => (
                     <div
                       key={r.id}
-                      className={`rounded-lg border p-3 ${
-                        r.blocked
+                      className={`rounded-lg border p-3 ${r.blocked
                           ? 'border-safe/40 bg-safe/5'
                           : 'border-blocked/40 bg-blocked/5'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2">
                         {r.blocked ? (
@@ -395,6 +394,10 @@ export function Dashboard({ site, projectName, user, logout }) {
               )}
             </div>
           </div>
+        )}
+        {/* ── Tab: Compliance & Analytics ── */}
+        {activeTab === 'compliance' && (
+          <ComplianceView />
         )}
       </div>
     </div>
