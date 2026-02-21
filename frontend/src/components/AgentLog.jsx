@@ -1,20 +1,8 @@
-const agentMeta = {
-  peek: { label: 'Peek', color: 'text-agent', desc: 'Scout' },
-  poke: { label: 'Poke', color: 'text-suspicious', desc: 'Red team' },
-  patch: { label: 'Patch', color: 'text-safe', desc: 'Fixer' },
-  system: { label: 'System', color: 'text-muted', desc: '' },
-}
-
-const statusIcons = {
-  running: '\u25B6',
-  done: '\u2713',
-  idle: '\u2014',
-  error: '\u2717',
-}
+import { humaniseAgentEvent, relativeTime } from '../lib/humanise'
 
 export function AgentLog({ events }) {
   return (
-    <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
       <div className="px-4 py-2.5 border-b border-border text-muted text-[12px] font-medium">
         Agent activity
       </div>
@@ -25,25 +13,32 @@ export function AgentLog({ events }) {
           </div>
         )}
         {events.map((evt, i) => {
-          const meta = agentMeta[evt.agent] || agentMeta.system
+          const { summary, color } = humaniseAgentEvent(evt)
+          const isRunning = evt.status === 'running'
           return (
-            <div key={i} className="px-4 py-2 border-b border-border/40 flex items-start gap-3">
-              <span className={`text-[12px] mt-px ${evt.status === 'error' ? 'text-blocked' : evt.status === 'done' ? 'text-safe' : 'text-muted'}`}>
-                {statusIcons[evt.status] || '?'}
-              </span>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className={`text-[12px] font-semibold ${meta.color}`}>
-                    {meta.label}
-                  </span>
-                  {meta.desc && (
-                    <span className="text-muted text-[11px]">{meta.desc}</span>
-                  )}
-                </div>
-                <p className="text-dim text-[12px] mt-0.5 truncate">
-                  {evt.detail}
-                </p>
+            <div key={i} className="px-4 py-2.5 border-b border-border/40 flex items-start gap-3">
+              <div className="mt-1.5 shrink-0">
+                {isRunning ? (
+                  <div className="h-2 w-2 animate-pulse rounded-full bg-agent" />
+                ) : evt.status === 'done' ? (
+                  <svg width="12" height="12" viewBox="0 0 16 16" className="text-safe">
+                    <path d="M6.5 12L2 7.5l1.4-1.4L6.5 9.2l6.1-6.1L14 4.5z" fill="currentColor" />
+                  </svg>
+                ) : evt.status === 'error' ? (
+                  <svg width="12" height="12" viewBox="0 0 16 16" className="text-blocked">
+                    <path d="M4.5 3L8 6.5 11.5 3 13 4.5 9.5 8 13 11.5 11.5 13 8 9.5 4.5 13 3 11.5 6.5 8 3 4.5z" fill="currentColor" />
+                  </svg>
+                ) : (
+                  <div className="h-2 w-2 rounded-full bg-border" />
+                )}
               </div>
+              <div className="min-w-0 flex-1">
+                <p className={`text-[13px] ${color}`}>{summary}</p>
+                {evt.detail && (
+                  <p className="mt-0.5 truncate text-[11px] text-muted">{evt.detail}</p>
+                )}
+              </div>
+              <span className="shrink-0 text-[11px] text-muted">{relativeTime(evt.timestamp)}</span>
             </div>
           )
         })}

@@ -2,69 +2,65 @@ import { useState } from 'react'
 import { useVeilSocket } from '../hooks/useVeilSocket'
 import { StatsBar } from '../components/StatsBar'
 import { RequestFeed } from '../components/RequestFeed'
-import { AgentLog } from '../components/AgentLog'
-import { ThreatTable } from '../components/ThreatTable'
 import { NavBar } from '../components/NavBar'
 import { PUBLIC_NAV_LINKS } from '../lib/navLinks'
+import { humaniseAttackType } from '../lib/humanise'
 
-const replayScenarios = [
+const testScenarios = [
   {
     id: 'sqli',
-    label: 'Replay SQL injection',
+    label: 'SQL injection',
     payload: "GET /users?id=1' OR '1'='1 HTTP/1.1\nHost: demo.internal",
   },
   {
     id: 'xss',
-    label: 'Replay XSS payload',
+    label: 'Cross-site scripting',
     payload: 'POST /comment HTTP/1.1\nHost: demo.internal\n\n<script>alert(1)</script>',
   },
   {
     id: 'ssrf',
-    label: 'Replay SSRF probe',
+    label: 'Server-side request forgery',
     payload: 'GET /proxy?url=http://169.254.169.254/latest/meta-data HTTP/1.1\nHost: demo.internal',
   },
 ]
 
 export function DemoPage() {
   const { requests, agentEvents, stats } = useVeilSocket()
-  const [running, setRunning] = useState('')
-  const [results, setResults] = useState([])
+  const [running, setRunning] = useState(false)
+  const [results, setResults] = useState(null)
 
-  const replayScenario = async (scenario) => {
-    setRunning(scenario.id)
-    try {
-      const res = await fetch('/v1/classify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: scenario.payload }),
-      })
-
-      if (!res.ok) throw new Error('Request failed')
-      const data = await res.json()
-      setResults((prev) => [
-        {
-          id: `${scenario.id}-${Date.now()}`,
+  const runAllTests = async () => {
+    setRunning(true)
+    const outcomes = []
+    for (const scenario of testScenarios) {
+      try {
+        const res = await fetch('/v1/classify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: scenario.payload }),
+        })
+        if (!res.ok) throw new Error('Request failed')
+        const data = await res.json()
+        outcomes.push({
+          id: scenario.id,
           label: scenario.label,
-          classification: data.classification,
-          attackType: data.attack_type,
           blocked: data.blocked,
-        },
-        ...prev,
-      ].slice(0, 8))
-    } catch {
-      setResults((prev) => [
-        {
-          id: `err-${scenario.id}-${Date.now()}`,
+          classification: data.classification,
+        })
+      } catch {
+        outcomes.push({
+          id: scenario.id,
           label: scenario.label,
-          classification: 'ERROR',
-          attackType: 'network',
           blocked: false,
-        },
-        ...prev,
-      ].slice(0, 8))
+          classification: 'ERROR',
+        })
+      }
     }
-    setRunning('')
+    setResults(outcomes)
+    setRunning(false)
   }
+
+  const blockedCount = results ? results.filter((r) => r.blocked).length : 0
 
   return (
     <div className="min-h-screen bg-bg text-text">
@@ -73,55 +69,74 @@ export function DemoPage() {
       </div>
 
       <main className="mx-auto max-w-7xl px-5 pb-6 pt-5">
-        <section className="mb-4 rounded-2xl border border-border bg-surface p-4">
-          <div className="mb-3 inline-flex rounded-full border border-safe/40 px-2 py-0.5 text-[11px] text-safe">READ ONLY</div>
-          <h1 className="text-xl font-semibold tracking-tight">Control Room Demo</h1>
-          <p className="mt-1 text-[13px] text-dim">
-            Replay known bypass payloads without forwarding to a real backend. Useful for judge walkthroughs.
+        <section className="mb-4 rounded-2xl border border-border bg-surface p-6">
+          <h1 className="text-2xl font-semibold tracking-tight">Try Veil</h1>
+          <p className="mt-2 text-[14px] text-dim">
+            Fire real attack payloads and see how Veil classifies and blocks them in real time.
           </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {replayScenarios.map((scenario) => (
-              <button
-                key={scenario.id}
-                type="button"
-                onClick={() => replayScenario(scenario)}
-                disabled={running === scenario.id}
-                className="rounded-lg border border-border bg-bg px-3 py-2 text-[12px] text-dim transition hover:text-text disabled:opacity-50"
-              >
-                {running === scenario.id ? 'Replaying...' : scenario.label}
-              </button>
-            ))}
-          </div>
-          {results.length > 0 && (
-            <div className="mt-4 overflow-hidden rounded-lg border border-border">
-              {results.map((result) => (
-                <div key={result.id} className="flex flex-wrap items-center gap-3 border-b border-border/60 bg-bg/65 px-3 py-2 text-[12px] last:border-b-0">
-                  <span className="font-medium text-dim">{result.label}</span>
-                  <span className={`font-mono ${result.classification === 'MALICIOUS' ? 'text-blocked' : result.classification === 'SAFE' ? 'text-safe' : 'text-suspicious'}`}>
-                    {result.classification}
-                  </span>
-                  <span className="text-muted">{result.attackType}</span>
-                  {result.blocked && (
-                    <span className="rounded bg-blocked/10 px-1.5 py-0.5 text-[11px] font-semibold text-blocked">BLOCKED</span>
-                  )}
-                </div>
-              ))}
+
+          <button
+            onClick={runAllTests}
+            disabled={running}
+            className="mt-4 rounded-lg bg-text px-5 py-2.5 text-[14px] font-medium text-bg disabled:opacity-50"
+          >
+            {running ? 'Running tests...' : 'Run All Tests'}
+          </button>
+
+          {results && (
+            <div className="mt-5">
+              <p className="text-[15px] font-semibold">
+                <span className={blockedCount === results.length ? 'text-safe' : blockedCount > 0 ? 'text-suspicious' : 'text-blocked'}>
+                  {blockedCount}/{results.length}
+                </span>
+                <span className="ml-2 text-dim font-normal">attacks blocked</span>
+              </p>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                {results.map((r) => (
+                  <div
+                    key={r.id}
+                    className={`rounded-lg border p-4 ${
+                      r.blocked
+                        ? 'border-safe/40 bg-safe/5'
+                        : 'border-blocked/40 bg-blocked/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {r.blocked ? (
+                        <svg width="18" height="18" viewBox="0 0 16 16" className="text-safe shrink-0">
+                          <path d="M6.5 12L2 7.5l1.4-1.4L6.5 9.2l6.1-6.1L14 4.5z" fill="currentColor" />
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 16 16" className="text-blocked shrink-0">
+                          <path d="M4.5 3L8 6.5 11.5 3 13 4.5 9.5 8 13 11.5 11.5 13 8 9.5 4.5 13 3 11.5 6.5 8 3 4.5z" fill="currentColor" />
+                        </svg>
+                      )}
+                      <span className={`text-[14px] font-medium ${r.blocked ? 'text-safe' : 'text-blocked'}`}>
+                        {r.blocked ? 'Blocked' : 'Missed'}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[13px] text-dim">{r.label}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
+
+          <div className="mt-6 border-t border-border pt-4">
+            <a
+              href="/app/onboarding"
+              className="inline-flex rounded-lg bg-text px-4 py-2 text-[14px] font-medium text-bg"
+            >
+              Protect your own site
+            </a>
+          </div>
         </section>
 
         <section className="overflow-hidden rounded-2xl border border-border bg-surface">
           <StatsBar stats={stats} />
-          <div className="grid min-h-[500px] grid-cols-1 lg:grid-cols-[1fr_350px]">
-            <div className="min-h-0 border-b border-border lg:border-b-0 lg:border-r">
-              <RequestFeed requests={requests} />
-            </div>
-            <div className="min-h-0">
-              <AgentLog events={agentEvents} />
-            </div>
-          </div>
-          <div className="h-[220px] border-t border-border">
-            <ThreatTable />
+          <div className="min-h-[400px]">
+            <RequestFeed requests={requests} />
           </div>
         </section>
       </main>

@@ -1,14 +1,22 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '../hooks/useAuth'
 import { getProjectNames } from '../lib/projectNames'
 import { NavBar } from '../components/NavBar'
 import { APP_NAV_LINKS } from '../lib/navLinks'
 
 export function ProjectsPage() {
+  const { user, loading: authLoading, logout } = useAuth()
   const [sites, setSites] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
+    if (authLoading) return
+    if (!user) {
+      window.location.href = '/auth'
+      return
+    }
+
     const load = async () => {
       try {
         const res = await fetch('/api/sites')
@@ -21,7 +29,15 @@ export function ProjectsPage() {
       setLoading(false)
     }
     load()
-  }, [])
+  }, [user, authLoading])
+
+  if (authLoading || (!user && !authLoading)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg text-muted">
+        Loading...
+      </div>
+    )
+  }
 
   const names = getProjectNames()
 
@@ -34,7 +50,23 @@ export function ProjectsPage() {
       <main className="mx-auto max-w-6xl px-6 py-6">
         <div className="mb-5 flex items-center justify-between gap-4">
           <h1 className="text-xl font-semibold">Projects</h1>
-          <a href="/app/onboarding" className="rounded-lg bg-text px-3 py-1.5 text-[14px] font-medium text-bg">New project</a>
+          <div className="flex items-center gap-3">
+            <a href="/app/onboarding" className="rounded-lg bg-text px-3 py-1.5 text-[14px] font-medium text-bg">New project</a>
+            {user && (
+              <>
+                <div className="h-4 w-px bg-border" />
+                <div className="flex items-center gap-2">
+                  {user.avatar_url && (
+                    <img src={user.avatar_url} alt={user.github_login} className="h-6 w-6 rounded-full" />
+                  )}
+                  <span className="text-[12px] text-dim">{user.name || user.github_login}</span>
+                  <button onClick={logout} className="border-none bg-transparent text-[11px] text-muted transition-colors hover:text-text">
+                    Sign out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {loading && <p className="text-[14px] text-muted">Loading projects...</p>}

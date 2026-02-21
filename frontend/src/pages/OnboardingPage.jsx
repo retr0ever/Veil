@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuth } from '../hooks/useAuth'
 import { setProjectName } from '../lib/projectNames'
 import { NavBar } from '../components/NavBar'
 import { APP_NAV_LINKS } from '../lib/navLinks'
@@ -11,11 +12,25 @@ function normalizeUrl(raw) {
 }
 
 export function OnboardingPage() {
+  const { user, loading: authLoading } = useAuth()
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState(null)
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg text-muted">
+        Loading...
+      </div>
+    )
+  }
+
+  if (!user) {
+    window.location.href = '/auth'
+    return null
+  }
 
   const submit = async (event) => {
     event.preventDefault()

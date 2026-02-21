@@ -5,14 +5,15 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from pydantic import BaseModel
 
 from .db.database import get_db, init_db
@@ -20,6 +21,53 @@ from .services import crusoe_classifier, claude_classifier
 from .agents import peek, poke, patch
 
 load_dotenv()
+
+
+# --- Session helpers ---
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
+SESSION_SECRET = os.getenv("SESSION_SECRET", "veil-dev-secret-change-me")
+SESSION_COOKIE = "veil_session"
+SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+
+_serializer = URLSafeTimedSerializer(SESSION_SECRET)
+
+
+def create_session_cookie(user_id: int) -> str:
+    return _serializer.dumps(user_id)
+
+
+def read_session_cookie(cookie: str) -> int | None:
+    try:
+        return _serializer.loads(cookie, max_age=SESSION_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+async def get_current_user(request: Request) -> dict | None:
+    """Return the current user dict from the session cookie, or None."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        return None
+    user_id = read_session_cookie(token)
+    if user_id is None:
+        return None
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT id, github_id, github_login, avatar_url, name FROM users WHERE id = ?",
+        (user_id,),
+    )
+    row = await cursor.fetchone()
+    await db.close()
+    if not row:
+        return None
+    return {
+        "id": row[0],
+        "github_id": row[1],
+        "github_login": row[2],
+        "avatar_url": row[3],
+        "name": row[4],
+    }
 
 
 # --- WebSocket manager for live dashboard ---
@@ -113,6 +161,97 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- Auth routes ---
+@app.get("/auth/github")
+async def auth_github():
+    """Redirect to GitHub OAuth."""
+    params = urlencode({
+        "client_id": GITHUB_CLIENT_ID,
+        "scope": "read:user",
+    })
+    return RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
+
+
+@app.get("/auth/github/callback")
+async def auth_github_callback(code: str):
+    """Exchange code for token, fetch user, set cookie, redirect to /."""
+    # Exchange code for access token
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(
+            "https://github.com/login/oauth/access_token",
+            json={
+                "client_id": GITHUB_CLIENT_ID,
+                "client_secret": GITHUB_CLIENT_SECRET,
+                "code": code,
+            },
+            headers={"Accept": "application/json"},
+        )
+    token_data = token_resp.json()
+    access_token = token_data.get("access_token")
+    if not access_token:
+        return JSONResponse(status_code=400, content={"error": "GitHub auth failed"})
+
+    # Fetch user profile
+    async with httpx.AsyncClient() as client:
+        user_resp = await client.get(
+            "https://api.github.com/user",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+    gh_user = user_resp.json()
+    github_id = gh_user["id"]
+    github_login = gh_user["login"]
+    avatar_url = gh_user.get("avatar_url", "")
+    name = gh_user.get("name", "")
+
+    # Upsert user
+    db = await get_db()
+    cursor = await db.execute("SELECT id FROM users WHERE github_id = ?", (github_id,))
+    existing = await cursor.fetchone()
+    if existing:
+        user_id = existing[0]
+        await db.execute(
+            "UPDATE users SET github_login = ?, avatar_url = ?, name = ? WHERE id = ?",
+            (github_login, avatar_url, name, user_id),
+        )
+    else:
+        cursor = await db.execute(
+            "INSERT INTO users (github_id, github_login, avatar_url, name, created_at) VALUES (?, ?, ?, ?, ?)",
+            (github_id, github_login, avatar_url, name, datetime.utcnow().isoformat()),
+        )
+        user_id = cursor.lastrowid
+    await db.commit()
+    await db.close()
+
+    # Set session cookie and redirect to frontend
+    response = RedirectResponse("/", status_code=302)
+    response.set_cookie(
+        SESSION_COOKIE,
+        create_session_cookie(user_id),
+        max_age=SESSION_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@app.get("/auth/me")
+async def auth_me(request: Request):
+    """Return current user or 401."""
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+    return user
+
+
+@app.post("/auth/logout")
+async def auth_logout():
+    """Clear session cookie."""
+    response = JSONResponse(content={"ok": True})
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
 
 
 # --- Models ---
@@ -221,8 +360,12 @@ async def classify_request(raw_request: str):
 
 # --- Site registration ---
 @app.post("/api/sites")
-async def add_site(req: AddSiteRequest):
+async def add_site(req: AddSiteRequest, request: Request):
     """Register a site to protect. Returns the site_id for the proxy URL."""
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+
     target_url = req.url.rstrip("/")
 
     # Validate URL
@@ -232,8 +375,11 @@ async def add_site(req: AddSiteRequest):
 
     db = await get_db()
 
-    # Check if already registered
-    cursor = await db.execute("SELECT site_id, target_url, created_at FROM sites WHERE target_url = ?", (target_url,))
+    # Check if already registered by this user
+    cursor = await db.execute(
+        "SELECT site_id, target_url, created_at FROM sites WHERE target_url = ? AND user_id = ?",
+        (target_url, user["id"]),
+    )
     existing = await cursor.fetchone()
     if existing:
         await db.close()
@@ -243,8 +389,8 @@ async def add_site(req: AddSiteRequest):
     now = datetime.utcnow().isoformat()
 
     await db.execute(
-        "INSERT INTO sites (site_id, target_url, created_at) VALUES (?, ?, ?)",
-        (site_id, target_url, now),
+        "INSERT INTO sites (site_id, target_url, user_id, created_at) VALUES (?, ?, ?, ?)",
+        (site_id, target_url, user["id"], now),
     )
     await db.commit()
     await db.close()
@@ -253,10 +399,17 @@ async def add_site(req: AddSiteRequest):
 
 
 @app.get("/api/sites")
-async def list_sites():
-    """List all registered sites."""
+async def list_sites(request: Request):
+    """List sites for the current user."""
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+
     db = await get_db()
-    cursor = await db.execute("SELECT site_id, target_url, created_at FROM sites ORDER BY created_at DESC")
+    cursor = await db.execute(
+        "SELECT site_id, target_url, created_at FROM sites WHERE user_id = ? ORDER BY created_at DESC",
+        (user["id"],),
+    )
     rows = await cursor.fetchall()
     await db.close()
     return [{"site_id": r[0], "target_url": r[1], "created_at": r[2]} for r in rows]

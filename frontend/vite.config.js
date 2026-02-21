@@ -6,10 +6,34 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      '/api': 'http://localhost:8000',
-      '/v1': 'http://localhost:8000',
-      '/p': 'http://localhost:8000',
-      '/ws': { target: 'ws://localhost:8000', ws: true },
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/auth/github': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/auth/me': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/auth/logout': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/v1': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/p': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:8000',
+        ws: true,
+      },
     },
   },
 })

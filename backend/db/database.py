@@ -16,10 +16,20 @@ async def get_db():
 async def init_db():
     db = await get_db()
     await db.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            github_id INTEGER NOT NULL UNIQUE,
+            github_login TEXT NOT NULL,
+            avatar_url TEXT,
+            name TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS sites (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             site_id TEXT NOT NULL UNIQUE,
             target_url TEXT NOT NULL,
+            user_id INTEGER REFERENCES users(id),
             created_at TEXT NOT NULL
         );
 
@@ -67,6 +77,13 @@ async def init_db():
         );
     """)
     await db.commit()
+
+    # Migrate: add user_id to sites if missing (existing DBs)
+    cursor = await db.execute("PRAGMA table_info(sites)")
+    columns = [row[1] for row in await cursor.fetchall()]
+    if "user_id" not in columns:
+        await db.execute("ALTER TABLE sites ADD COLUMN user_id INTEGER REFERENCES users(id)")
+        await db.commit()
 
     # seed initial rules if empty
     cursor = await db.execute("SELECT COUNT(*) FROM rules")

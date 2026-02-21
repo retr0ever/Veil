@@ -40,6 +40,9 @@ function App() {
   const pathname = normalizePath(window.location.pathname)
   const projectId = getProjectId(pathname)
 
+  // Let /auth/github* hit the backend directly (OAuth flow)
+  if (pathname.startsWith('/auth/github')) return null
+
   if (pathname === '/') return <LandingPage />
   if (pathname === '/demo') return <DemoPage />
   if (pathname === '/auth') return <AuthPage />

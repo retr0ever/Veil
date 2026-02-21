@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '../hooks/useAuth'
 import { Dashboard } from '../components/Dashboard'
 import { getProjectName } from '../lib/projectNames'
 
 export function ProjectDashboardPage({ siteId }) {
+  const { user, loading: authLoading, logout } = useAuth()
   const [site, setSite] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (authLoading) return
+    if (!user) {
+      window.location.href = '/auth'
+      return
+    }
+
     const load = async () => {
       try {
         const res = await fetch('/api/sites')
@@ -21,15 +29,17 @@ export function ProjectDashboardPage({ siteId }) {
       setLoading(false)
     }
     load()
-  }, [siteId])
+  }, [siteId, user, authLoading])
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-bg text-muted">
         Loading project...
       </div>
     )
   }
+
+  if (!user) return null
 
   if (!site) {
     return (
@@ -44,5 +54,5 @@ export function ProjectDashboardPage({ siteId }) {
     )
   }
 
-  return <Dashboard site={site} projectName={getProjectName(siteId)} />
+  return <Dashboard site={site} projectName={getProjectName(siteId)} user={user} logout={logout} />
 }
