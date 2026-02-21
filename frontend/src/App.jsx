@@ -4,6 +4,7 @@ import { AuthPage } from './pages/AuthPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { ProjectDashboardPage } from './pages/ProjectDashboardPage'
+import { DocsPage } from './pages/DocsPage'
 import { NavBar } from './components/NavBar'
 import { PUBLIC_NAV_LINKS } from './lib/navLinks'
 
@@ -67,6 +68,7 @@ function App() {
   else if (pathname === '/auth')          page = <AuthPage />
   else if (pathname === '/app/projects')  page = <ProjectsPage />
   else if (pathname === '/app/onboarding') page = <OnboardingPage />
+  else if (pathname === '/app/docs')      page = <DocsPage />
   else if (projectId)                     page = <ProjectDashboardPage siteId={projectId} />
 
   /* ── Public shell: NavBar + page, NO sidebar ── */

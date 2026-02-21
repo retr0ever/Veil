@@ -89,6 +89,15 @@ const icons = {
       <path d="M5 5l10 10M15 5L5 15" />
     </svg>
   ),
+  'file-text': (
+    <svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.5 2H5a1.5 1.5 0 0 0-1.5 1.5v11A1.5 1.5 0 0 0 5 16h8a1.5 1.5 0 0 0 1.5-1.5V6L10.5 2z" fill="currentColor" opacity="0.1" />
+      <path d="M10.5 2H5a1.5 1.5 0 0 0-1.5 1.5v11A1.5 1.5 0 0 0 5 16h8a1.5 1.5 0 0 0 1.5-1.5V6L10.5 2z" />
+      <polyline points="10.5 2 10.5 6 14.5 6" />
+      <line x1="6.5" y1="9.5" x2="11.5" y2="9.5" />
+      <line x1="6.5" y1="12" x2="11.5" y2="12" />
+    </svg>
+  ),
 }
 
 function SidebarIcon({ name }) {
