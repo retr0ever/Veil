@@ -8,21 +8,28 @@ const AGENT_ITEMS = [
 
 const AGENT_DETAILS = {
   all: {
-    heading: 'AGENTS: Three agents. One loop.',
+    heading: 'Three agents. One goal.',
     body: 'Peek discovers new attack techniques, Poke stress-tests Veil with variants, and Patch updates the rules - then verifies the fix by replaying the bypass.',
   },
   peek: {
-    heading: 'PEEK: Scout / Threat Discovery',
+    heading: 'PEEK: Threat Discovery',
     body: 'Continuously collects emerging attack techniques and patterns, labels them by category and severity, and stores them in the threat intelligence database with sources.',
   },
   poke: {
-    heading: 'POKE: Red Team / Bypass Hunter',
+    heading: 'POKE: Red Team',
     body: 'Generates attack variations and fires them at Veil’s own classifier. Logs what gets blocked vs. what slips through, and escalates any bypass as a report for patching.',
   },
   patch: {
-    heading: 'PATCH: Adaptation / Auto-Patcher',
+    heading: 'PATCH: Adaptation',
     body: 'Analyzes why a bypass worked, updates the detection prompts/rules, redeploys immediately, and verifies the fix by re-running the exact same attack until it’s blocked.',
   },
+}
+
+const AGENT_BORDER_COLORS = {
+  all: 'rgba(132, 129, 136, 0.7)',
+  peek: '#F4B6EB',
+  poke: '#B9A1F4',
+  patch: '#F6C371',
 }
 
 const HOW_IT_WORKS_STEPS = [
@@ -65,6 +72,7 @@ export function LandingPage() {
   }, [activeAgent])
 
   const activeAgentDetails = AGENT_DETAILS[activeAgent]
+  const activeAgentBorderColor = AGENT_BORDER_COLORS[activeAgent]
 
   return (
     <div className="min-h-screen w-full bg-[#1a1322] text-[#f4eff7]">
@@ -238,12 +246,15 @@ export function LandingPage() {
               </div>
 
               <div className="absolute inset-x-[6%] top-[82%] z-0">
-                <div className="rounded-[6px] border border-[#848188]/70 bg-[#21192b] px-6 py-6 md:px-7 md:py-7">
+                <div
+                  className="rounded-[6px] border bg-[#21192b] px-6 py-6 transition-colors duration-200 md:px-7 md:py-7"
+                  style={{ borderColor: activeAgentBorderColor }}
+                >
                   <div className={`transition-opacity duration-200 ${agentPanelVisible ? 'opacity-100' : 'opacity-0'}`}>
-                    <h3 className="text-[22px] leading-tight text-[#f4eff7] md:text-[24px]">
+                    <h3 className={`text-[22px] leading-tight text-[#f4eff7] md:text-[24px] ${activeAgent === 'all' ? 'text-center' : 'text-left'}`}>
                       {activeAgentDetails.heading}
                     </h3>
-                    <p className="mt-3 text-[17px] leading-[1.6] text-[#d0c8da] md:text-[18px]">
+                    <p className="mt-3 text-[19px] leading-[1.6] text-[#d0c8da] md:text-[20px]">
                       {activeAgentDetails.body}
                     </p>
                   </div>
@@ -278,12 +289,15 @@ export function LandingPage() {
               </div>
             </div>
               <div className="mx-auto mt-6 w-full max-w-[860px] px-1">
-              <div className="rounded-[6px] border border-[#848188]/70 bg-[#21192b] px-6 py-6">
+              <div
+                className="rounded-[6px] border bg-[#21192b] px-6 py-6 transition-colors duration-200"
+                style={{ borderColor: activeAgentBorderColor }}
+              >
                 <div className={`transition-opacity duration-200 ${agentPanelVisible ? 'opacity-100' : 'opacity-0'}`}>
-                  <h3 className="text-[22px] leading-tight text-[#f4eff7]">
+                  <h3 className={`text-[22px] leading-tight text-[#f4eff7] ${activeAgent === 'all' ? 'text-center' : 'text-left'}`}>
                     {activeAgentDetails.heading}
                   </h3>
-                  <p className="mt-3 text-[17px] leading-[1.6] text-[#d0c8da]">
+                  <p className="mt-3 text-[19px] leading-[1.6] text-[#d0c8da]">
                     {activeAgentDetails.body}
                   </p>
                 </div>
