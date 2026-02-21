@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 import secrets
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -67,6 +69,50 @@ async def get_current_user(request: Request) -> dict | None:
         "avatar_url": row[3],
         "name": row[4],
     }
+
+
+# --- Rate limiter ---
+class RateLimiter:
+    """In-memory sliding window rate limiter per IP."""
+
+    def __init__(self):
+        self._hits: dict[str, list[float]] = defaultdict(list)
+
+    def is_allowed(self, key: str, max_requests: int, window_seconds: int) -> bool:
+        now = time.monotonic()
+        cutoff = now - window_seconds
+        hits = self._hits[key]
+        # Prune old entries
+        self._hits[key] = hits = [t for t in hits if t > cutoff]
+        if len(hits) >= max_requests:
+            return False
+        hits.append(now)
+        return True
+
+
+rate_limiter = RateLimiter()
+
+# Limits: (max_requests, window_seconds)
+RATE_LIMITS = {
+    "classify": (30, 60),    # 30 req/min per IP
+    "proxy": (60, 60),       # 60 req/min per IP
+    "auth": (10, 60),        # 10 req/min per IP
+    "api": (60, 60),         # 60 req/min per IP
+}
+
+
+def check_rate_limit(request: Request, bucket: str) -> JSONResponse | None:
+    """Return a 429 response if rate limited, else None."""
+    ip = request.client.host if request.client else "unknown"
+    key = f"{bucket}:{ip}"
+    limit, window = RATE_LIMITS.get(bucket, (60, 60))
+    if not rate_limiter.is_allowed(key, limit, window):
+        return JSONResponse(
+            status_code=429,
+            content={"error": "Rate limited", "retry_after_seconds": window},
+            headers={"Retry-After": str(window)},
+        )
+    return None
 
 
 # --- WebSocket manager for live dashboard ---
@@ -164,8 +210,10 @@ app.add_middleware(
 
 # --- Auth routes ---
 @app.get("/auth/github")
-async def auth_github():
+async def auth_github(request: Request):
     """Redirect to GitHub OAuth."""
+    if r := check_rate_limit(request, "auth"):
+        return r
     params = urlencode({
         "client_id": GITHUB_CLIENT_ID,
         "scope": "read:user",
@@ -174,8 +222,10 @@ async def auth_github():
 
 
 @app.get("/auth/github/callback")
-async def auth_github_callback(code: str):
+async def auth_github_callback(code: str, request: Request):
     """Exchange code for token, fetch user, set cookie, redirect to /."""
+    if r := check_rate_limit(request, "auth"):
+        return r
     # Exchange code for access token
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
@@ -437,6 +487,8 @@ async def list_sites(request: Request):
 @app.api_route("/p/{site_id}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"])
 async def proxy(site_id: str, path: str, request: Request):
     """Reverse proxy: classifies the request, then forwards to the real backend or blocks."""
+    if r := check_rate_limit(request, "proxy"):
+        return r
     # Look up site
     async with get_db() as db:
         cursor = await db.execute("SELECT target_url FROM sites WHERE site_id = ?", (site_id,))
@@ -515,7 +567,9 @@ async def proxy(site_id: str, path: str, request: Request):
 
 # --- Classification-only endpoint (used by Poke) ---
 @app.post("/v1/classify")
-async def classify_only(req: ClassifyRequest):
+async def classify_only(req: ClassifyRequest, request: Request):
+    if r := check_rate_limit(request, "classify"):
+        return r
     result = await classify_request(req.message)
     return result
 
