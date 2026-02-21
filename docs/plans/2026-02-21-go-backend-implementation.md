@@ -1299,6 +1299,521 @@ git commit -m "feat: add Hub API endpoints for CrowdSec rule management"
 
 ---
 
+## Phase 9: IP Threat Intelligence Aggregation
+
+### Task 31: Threat intel types and feed definitions
+
+**Files:**
+- Create: `go-backend/internal/intel/types.go`
+- Create: `go-backend/internal/intel/feeds.go`
+
+**types.go must have:**
+
+```go
+package intel
+
+import (
+    "net"
+    "time"
+)
+
+// FeedConfig defines a threat intelligence feed source
+type FeedConfig struct {
+    Name        string        // unique identifier, e.g. "spamhaus-drop"
+    URL         string        // HTTP(S) URL to fetch
+    Format      string        // "ip_lines", "cidr_lines", "cidr_comments", "ipsum"
+    Tier        int           // 1=immediate ban, 2=high-confidence block, 3=elevated scrutiny
+    RefreshRate time.Duration // how often to re-fetch
+    Enabled     bool
+}
+
+// IPEntry represents a single IP or CIDR from a threat feed
+type IPEntry struct {
+    IP      string   // individual IP or CIDR string
+    Sources []string // which feeds flagged this IP
+    Tier    int      // lowest (most severe) tier across all sources
+    FirstSeen time.Time
+    LastSeen  time.Time
+}
+
+// CIDREntry represents a parsed CIDR range for matching
+type CIDREntry struct {
+    Network *net.IPNet
+    Source  string
+    Tier    int
+}
+
+// FeedStatus tracks the state of a feed for the DB/API
+type FeedStatus struct {
+    Name        string
+    URL         string
+    Tier        int
+    LastFetch   time.Time
+    LastSuccess time.Time
+    EntryCount  int
+    Error       string
+    Enabled     bool
+}
+
+// LookupResult is returned when checking an IP against all feeds
+type LookupResult struct {
+    Found   bool
+    IP      string
+    Tier    int      // lowest tier (most severe)
+    Sources []string // all feeds that list this IP
+    Score   float64  // reputation score derived from tier
+}
+```
+
+**feeds.go must have:**
+
+- `DefaultFeeds` — slice of 9 `FeedConfig` structs (all sources from design doc):
+  - Tier 1: Spamhaus DROP, Spamhaus EDROP, FireHOL level1
+  - Tier 2: borestad/abuseipdb 30d, IPsum level 3
+  - Tier 3: Blocklist.de all, CINS Army, Emerging Threats, Tor Exit Nodes
+- `ParseIPLines(data []byte) ([]string, error)` — parse plain text IPs (one per line, skip comments/blanks)
+- `ParseCIDRLines(data []byte) ([]net.IPNet, error)` — parse CIDR netset files (skip comments starting with `#`)
+- `ParseCIDRComments(data []byte) ([]net.IPNet, error)` — parse Spamhaus format (`1.2.3.0/24 ; SBL123`)
+- `ParseIPsum(data []byte, minLevel int) ([]string, error)` — parse IPsum TSV (`ip<tab>count`), filter by min count
+- `TierToScore(tier int) float64` — tier 1→0.95, tier 2→0.80, tier 3→0.60
+
+```go
+var DefaultFeeds = []FeedConfig{
+    {Name: "spamhaus-drop",
+     URL: "https://www.spamhaus.org/drop/drop.txt",
+     Format: "cidr_comments", Tier: 1, RefreshRate: 24 * time.Hour, Enabled: true},
+    {Name: "spamhaus-edrop",
+     URL: "https://www.spamhaus.org/drop/edrop.txt",
+     Format: "cidr_comments", Tier: 1, RefreshRate: 24 * time.Hour, Enabled: true},
+    {Name: "firehol-level1",
+     URL: "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset",
+     Format: "cidr_lines", Tier: 1, RefreshRate: 24 * time.Hour, Enabled: true},
+    {Name: "abuseipdb-30d",
+     URL: "https://raw.githubusercontent.com/borestad/blocklist-abuseipdb/main/abuseipdb-s100-30d.ipv4",
+     Format: "ip_lines", Tier: 2, RefreshRate: 6 * time.Hour, Enabled: true},
+    {Name: "ipsum-level3",
+     URL: "https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt",
+     Format: "ip_lines", Tier: 2, RefreshRate: 24 * time.Hour, Enabled: true},
+    {Name: "blocklist-de-all",
+     URL: "https://lists.blocklist.de/lists/all.txt",
+     Format: "ip_lines", Tier: 3, RefreshRate: 1 * time.Hour, Enabled: true},
+    {Name: "cins-army",
+     URL: "https://cinsscore.com/list/ci-badguys.txt",
+     Format: "ip_lines", Tier: 3, RefreshRate: 6 * time.Hour, Enabled: true},
+    {Name: "emerging-threats",
+     URL: "https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt",
+     Format: "cidr_comments", Tier: 3, RefreshRate: 12 * time.Hour, Enabled: true},
+    {Name: "tor-exit-nodes",
+     URL: "https://check.torproject.org/torbulkexitlist",
+     Format: "ip_lines", Tier: 3, RefreshRate: 1 * time.Hour, Enabled: true},
+}
+```
+
+**Step 1: Write types.go and feeds.go**
+
+**Step 2: Build check**
+
+```
+go build ./internal/intel/
+```
+
+**Step 3: Commit**
+
+```
+git add go-backend/internal/intel/types.go go-backend/internal/intel/feeds.go
+git commit -m "feat: add threat intel types and 9-source feed definitions"
+```
+
+---
+
+### Task 32: IP set data structure (IP + CIDR lookup)
+
+**Files:**
+- Create: `go-backend/internal/intel/ipset.go`
+
+**What it must have:**
+
+- `IPSet` struct with:
+  - `ips map[string]*IPEntry` — O(1) lookup for individual IPs
+  - `cidrs []CIDREntry` — slice of parsed CIDR ranges
+  - `mu sync.RWMutex` — thread-safe concurrent reads
+- `NewIPSet() *IPSet`
+- `Add(ip string, source string, tier int)` — add individual IP
+- `AddCIDR(cidr *net.IPNet, source string, tier int)` — add CIDR range
+- `Lookup(ip string) *LookupResult` — check IP against all entries:
+  1. Fast path: check `ips` map directly (O(1))
+  2. Slow path: iterate `cidrs` slice, call `cidr.Contains(net.ParseIP(ip))` (~7,500 CIDRs, ~1μs)
+  3. Return merged result with lowest tier and all matching sources
+- `Clear()` — reset all entries (used before re-importing feeds)
+- `Stats() (ipCount int, cidrCount int)` — counts for API
+- `Merge(other *IPSet)` — combine two sets
+
+```go
+type IPSet struct {
+    mu    sync.RWMutex
+    ips   map[string]*IPEntry
+    cidrs []CIDREntry
+}
+
+func (s *IPSet) Lookup(ipStr string) *LookupResult {
+    s.mu.RLock()
+    defer s.mu.RUnlock()
+
+    result := &LookupResult{IP: ipStr, Tier: 4} // 4 = not found
+
+    // Fast: individual IP check
+    if entry, ok := s.ips[ipStr]; ok {
+        result.Found = true
+        result.Sources = entry.Sources
+        if entry.Tier < result.Tier {
+            result.Tier = entry.Tier
+        }
+    }
+
+    // Slow: CIDR range check
+    ip := net.ParseIP(ipStr)
+    if ip != nil {
+        for _, cidr := range s.cidrs {
+            if cidr.Network.Contains(ip) {
+                result.Found = true
+                result.Sources = append(result.Sources, cidr.Source)
+                if cidr.Tier < result.Tier {
+                    result.Tier = cidr.Tier
+                }
+            }
+        }
+    }
+
+    if result.Found {
+        result.Score = TierToScore(result.Tier)
+    }
+    return result
+}
+```
+
+**Step 1: Write ipset.go**
+
+**Step 2: Build check**
+
+```
+go build ./internal/intel/
+```
+
+**Step 3: Commit**
+
+```
+git add go-backend/internal/intel/ipset.go
+git commit -m "feat: add IP/CIDR lookup set for threat intelligence"
+```
+
+---
+
+### Task 33: Feed aggregator (background fetcher)
+
+**Files:**
+- Create: `go-backend/internal/intel/aggregator.go`
+
+**What it must have:**
+
+- `Aggregator` struct with:
+  - `feeds []FeedConfig`
+  - `ipset *IPSet`
+  - `statuses map[string]*FeedStatus`
+  - `client *http.Client` (30s timeout)
+  - `behavioral *behavioral.BehavioralEngine` (optional, for score injection)
+  - `mu sync.RWMutex`
+- `NewAggregator(feeds []FeedConfig, behavioral *behavioral.BehavioralEngine) *Aggregator`
+- `FetchFeed(ctx context.Context, feed FeedConfig) (ips []string, cidrs []net.IPNet, err error)`:
+  - HTTP GET the URL
+  - Dispatch to the correct parser based on `feed.Format`
+  - Return parsed IPs and CIDRs
+  - Update `FeedStatus` (last_fetch, entry_count, error)
+- `FetchAll(ctx context.Context) error`:
+  - Fetch all enabled feeds in parallel (bounded concurrency, e.g. 3 goroutines)
+  - Build a new `IPSet` from all results
+  - Atomically swap the old set with the new set
+  - Push tier scores into the behavioral engine's IP reputation map
+- `Run(ctx context.Context)`:
+  - Background goroutine
+  - On startup: `FetchAll()` if `INTEL_REFRESH_ON_START` is true
+  - Then: per-feed timers that re-fetch individual feeds at their `RefreshRate`
+  - Context cancellation for graceful shutdown
+- `Lookup(ip string) *LookupResult` — proxy to `ipset.Lookup()`
+- `GetStatuses() []FeedStatus` — current feed states for API
+- `RefreshFeed(ctx context.Context, name string) error` — manually trigger one feed
+
+```go
+func (a *Aggregator) FetchFeed(ctx context.Context, feed FeedConfig) ([]string, []net.IPNet, error) {
+    req, _ := http.NewRequestWithContext(ctx, "GET", feed.URL, nil)
+    resp, err := a.client.Do(req)
+    if err != nil {
+        return nil, nil, fmt.Errorf("fetch %s: %w", feed.Name, err)
+    }
+    defer resp.Body.Close()
+
+    // Limit read to 50MB to prevent memory issues
+    data, err := io.ReadAll(io.LimitReader(resp.Body, 50*1024*1024))
+    if err != nil {
+        return nil, nil, fmt.Errorf("read %s: %w", feed.Name, err)
+    }
+
+    switch feed.Format {
+    case "ip_lines":
+        ips, err := ParseIPLines(data)
+        return ips, nil, err
+    case "cidr_lines":
+        cidrs, err := ParseCIDRLines(data)
+        return nil, cidrs, err
+    case "cidr_comments":
+        cidrs, err := ParseCIDRComments(data)
+        return nil, cidrs, err
+    case "ipsum":
+        ips, err := ParseIPsum(data, 3)
+        return ips, nil, err
+    }
+    return nil, nil, fmt.Errorf("unknown format: %s", feed.Format)
+}
+```
+
+**Behavioral engine integration:**
+
+```go
+func (a *Aggregator) pushToReputation() {
+    if a.behavioral == nil {
+        return
+    }
+    a.ipset.mu.RLock()
+    defer a.ipset.mu.RUnlock()
+
+    for ip, entry := range a.ipset.ips {
+        score := TierToScore(entry.Tier)
+        a.behavioral.SetFeedReputation(ip, score, entry.Sources)
+    }
+    // CIDR ranges: store as range entries in the behavioral engine
+    for _, cidr := range a.ipset.cidrs {
+        a.behavioral.SetCIDRReputation(cidr.Network, TierToScore(cidr.Tier), cidr.Source)
+    }
+}
+```
+
+**Step 1: Write aggregator.go**
+
+**Step 2: Build check**
+
+```
+go build ./internal/intel/
+```
+
+**Step 3: Commit**
+
+```
+git add go-backend/internal/intel/aggregator.go
+git commit -m "feat: add multi-source threat feed aggregator with background refresh"
+```
+
+---
+
+### Task 34: Threat feeds database table + CRUD
+
+**Files:**
+- Modify: `go-backend/internal/db/database.go`
+
+**What to add:**
+
+New table `threat_feeds` in `Init()`:
+
+```sql
+CREATE TABLE IF NOT EXISTS threat_feeds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    url TEXT NOT NULL,
+    tier INTEGER NOT NULL,
+    last_fetch TEXT,
+    last_success TEXT,
+    entry_count INTEGER DEFAULT 0,
+    error TEXT,
+    enabled BOOLEAN DEFAULT 1
+)
+```
+
+New CRUD functions:
+- `UpsertThreatFeed(status FeedStatus) error` — insert or update feed status
+- `GetThreatFeeds() ([]FeedStatus, error)` — list all feeds
+- `GetThreatFeed(name string) (*FeedStatus, error)` — get by name
+- `SetThreatFeedEnabled(name string, enabled bool) error` — toggle feed
+
+**Step 1: Add table creation to Init()**
+
+**Step 2: Add CRUD functions**
+
+**Step 3: Build check**
+
+```
+go build ./internal/db/
+```
+
+**Step 4: Commit**
+
+```
+git add go-backend/internal/db/database.go
+git commit -m "feat: add threat_feeds table for IP intelligence tracking"
+```
+
+---
+
+### Task 35: Integrate aggregator into behavioral engine
+
+**Files:**
+- Modify: `go-backend/internal/behavioral/engine.go`
+- Modify: `go-backend/main.go`
+
+**engine.go changes:**
+
+Add two new methods to the behavioral engine:
+
+```go
+// SetFeedReputation sets an IP's reputation from a threat feed.
+// Feed scores only raise reputation, never lower it (Veil's own
+// observations can still push it higher).
+func (e *BehavioralEngine) SetFeedReputation(ip string, score float64, sources []string) {
+    e.mu.Lock()
+    defer e.mu.Unlock()
+    rep, ok := e.ipReputation[ip]
+    if !ok {
+        rep = &IPReputation{IP: ip, FirstSeen: time.Now()}
+        e.ipReputation[ip] = rep
+    }
+    if score > rep.Score {
+        rep.Score = score
+    }
+    rep.LastSeen = time.Now()
+    rep.FeedSources = sources // new field
+}
+
+// SetCIDRReputation stores a CIDR range reputation for range-based lookups.
+func (e *BehavioralEngine) SetCIDRReputation(cidr *net.IPNet, score float64, source string) {
+    e.mu.Lock()
+    defer e.mu.Unlock()
+    e.cidrReputation = append(e.cidrReputation, CIDRReputation{
+        Network: cidr, Score: score, Source: source,
+    })
+}
+
+// CheckIPWithFeeds extends CheckIP to also check CIDR ranges from threat feeds.
+func (e *BehavioralEngine) CheckIPWithFeeds(ip string) *IPReputation {
+    rep := e.CheckIP(ip)
+    // Also check CIDR ranges
+    parsedIP := net.ParseIP(ip)
+    if parsedIP != nil {
+        e.mu.RLock()
+        for _, cidr := range e.cidrReputation {
+            if cidr.Network.Contains(parsedIP) && cidr.Score > rep.Score {
+                rep.Score = cidr.Score
+                rep.FeedSources = append(rep.FeedSources, cidr.Source)
+            }
+        }
+        e.mu.RUnlock()
+    }
+    return rep
+}
+```
+
+Add new fields to `IPReputation`:
+```go
+type IPReputation struct {
+    // ... existing fields ...
+    FeedSources []string // threat feeds that flagged this IP
+}
+```
+
+Add new slice to `BehavioralEngine`:
+```go
+type CIDRReputation struct {
+    Network *net.IPNet
+    Score   float64
+    Source  string
+}
+```
+
+**main.go changes:**
+
+- Initialize `Aggregator` after behavioral engine
+- Pass behavioral engine reference to aggregator
+- Start `aggregator.Run(ctx)` background goroutine
+- Wire aggregator into proxy handler for direct IP lookup (optional fast path)
+
+**Step 1: Update engine.go with feed reputation methods**
+
+**Step 2: Update main.go to initialize and start aggregator**
+
+**Step 3: Build full project**
+
+```
+go build ./...
+```
+
+**Step 4: Commit**
+
+```
+git add go-backend/internal/behavioral/engine.go go-backend/main.go
+git commit -m "feat: integrate threat feed aggregator with behavioral engine"
+```
+
+---
+
+### Task 36: Threat intel API endpoints
+
+**Files:**
+- Modify: `go-backend/handlers.go`
+
+**New endpoints:**
+
+- `GET /api/intel/feeds` — list all threat feeds with status (last fetch, entry count, errors)
+- `GET /api/intel/feeds/{name}` — get single feed status
+- `POST /api/intel/feeds/{name}/refresh` — manually trigger a feed refresh
+- `PUT /api/intel/feeds/{name}` — update feed config (enable/disable, change tier)
+- `GET /api/intel/lookup/{ip}` — check if an IP appears in any threat feed (returns tier, sources, score)
+- `GET /api/intel/stats` — aggregate stats (total IPs, total CIDRs, feeds healthy/stale, tier breakdown)
+
+```go
+// GET /api/intel/lookup/{ip}
+func (s *Server) handleIntelLookup(w http.ResponseWriter, r *http.Request) {
+    ip := mux.Vars(r)["ip"]
+    result := s.aggregator.Lookup(ip)
+    json.NewEncoder(w).Encode(result)
+}
+
+// GET /api/intel/stats
+func (s *Server) handleIntelStats(w http.ResponseWriter, r *http.Request) {
+    statuses := s.aggregator.GetStatuses()
+    ipCount, cidrCount := s.aggregator.Stats()
+    json.NewEncoder(w).Encode(map[string]any{
+        "total_ips":   ipCount,
+        "total_cidrs": cidrCount,
+        "feeds":       statuses,
+    })
+}
+```
+
+**Step 1: Add endpoint handlers**
+
+**Step 2: Mount routes in main.go**
+
+**Step 3: Build check**
+
+```
+go build ./...
+```
+
+**Step 4: Commit**
+
+```
+git add go-backend/handlers.go go-backend/main.go
+git commit -m "feat: add threat intelligence API endpoints"
+```
+
+---
+
 ## Task Dependency Graph
 
 ```
@@ -1315,6 +1830,11 @@ Phase 8 (hub):         [24] → [25] → [26] → [27] → [28] → [29] → [30
                        [28] depends on [15] (agent types) + [24,25,26]
                        [29] depends on [13] (pipeline) + [26] (converter)
                        [30] depends on [21] (handlers) + [28] (learn agent)
+Phase 9 (intel):       [31] → [32] → [33] → [34] → [35] → [36]
+                       [31,32] can start after Phase 1 (need only go.mod)
+                       [34] depends on Task 2 (database layer)
+                       [35] depends on [8] (behavioral engine) + [33] (aggregator)
+                       [36] depends on [21] (handlers) + [33] (aggregator)
 ```
 
 **Parallelizable tasks:**
@@ -1322,11 +1842,13 @@ Phase 8 (hub):         [24] → [25] → [26] → [27] → [28] → [29] → [30
 - Tasks 10,11,12 can all run in parallel
 - Tasks 16,17,18 can all run in parallel
 - Tasks 24,25,26 can start in parallel with Phase 2-4
+- Tasks 31,32 can start in parallel with Phase 2-4
+- Phases 8 and 9 are independent of each other
 - Task 14 (prompts) is fully independent
 
 **Critical path:** 1 → 2 → 3 → 13 → 15 → 19 → 20 → 21 → 22
 
-**Hub integration can be developed in parallel with Phases 2-5**, merging at Phase 6 (server) and Phase 7 (integration).
+**Hub (Phase 8) and Intel (Phase 9) can be developed in parallel with Phases 2-5 and with each other**, merging at Phase 6 (server) and Phase 7 (integration).
 
 ---
 

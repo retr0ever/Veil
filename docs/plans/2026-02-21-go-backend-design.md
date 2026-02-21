@@ -19,7 +19,9 @@ The Go backend is a separate codebase from the Python backend (`go-backend/` dir
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  Enhanced Reverse Proxy                                    │   │
-│  │  1. IP Reputation check        (in-memory, ~0ms)          │   │
+│  │  1. IP Reputation check        (in-memory + threat feeds,  │   │
+│  │                                 ~190k IPs + 7.5k CIDRs,   │   │
+│  │                                 ~0ms)                      │   │
 │  │  2. Behavioral Analysis         (leaky bucket, ~1ms)      │   │
 │  │  3. Regex Classifier            (compiled patterns, ~1ms) │   │
 │  │  4. Fast LLM (Ollama local)     (Qwen3-0.6B, ~15-40ms)  │   │
@@ -398,6 +400,11 @@ go-backend/
 │   │   ├── types.go                 -- Scenario, AppSecRule, Collection structs
 │   │   ├── converter.go             -- CrowdSec → Veil rule conversion
 │   │   └── matcher.go               -- Zone extraction, transforms, matching
+│   ├── intel/
+│   │   ├── aggregator.go            -- Background fetcher, refresh scheduling
+│   │   ├── feeds.go                 -- 9 feed definitions, format parsers
+│   │   ├── ipset.go                 -- Thread-safe IP/CIDR lookup set
+│   │   └── types.go                 -- FeedConfig, IPEntry, LookupResult
 │   ├── proxy/
 │   │   └── proxy.go                  -- Enhanced reverse proxy
 │   ├── db/
@@ -443,6 +450,9 @@ go-backend/
 | `SESSION_SECRET` | Cookie signing key | (required) |
 | `VEIL_PROXY_URL` | Poke agent target | `http://localhost:8080` |
 | `CROWDSEC_HUB_URL` | Hub index URL | `https://raw.githubusercontent.com/crowdsecurity/hub/master/.index.json` |
+| `INTEL_ENABLED` | Enable threat feed aggregation | `true` |
+| `INTEL_REFRESH_ON_START` | Fetch all feeds on startup | `true` |
+| `INTEL_TOR_TIER` | Tor exit node tier (1-3, 0=ignore) | `3` |
 | `GENKIT_ENV` | Genkit mode | (set to `dev` for Dev UI) |
 
 ## 10. What's Novel / Differentiators
@@ -455,6 +465,7 @@ go-backend/
 6. **Self-improving prompts**: The Patch flow updates prompts stored as markdown files and rule versions in the DB.
 7. **Go performance**: The reverse proxy, behavioral engine, and regex classifier all run in pure Go with zero network calls for the fast path.
 8. **CrowdSec Hub integration**: Dynamic import of MIT-licensed detection rules from the CrowdSec community Hub — AppSec rules become compiled Go matchers, scenarios become behavioral engine configs. A "Learn" agent auto-detects the protected app type and imports relevant collections.
+9. **Multi-source IP threat intelligence**: Aggregates 9 open-source blocklists (~190,000+ IPs + ~7,500 CIDRs) into a tiered reputation system. Day-zero protection before Veil's AI observes any traffic. Spamhaus DROP, AbuseIPDB, IPsum, FireHOL, Blocklist.de, CINS, Emerging Threats, Tor exits — all free, no API keys, auto-refreshed.
 
 ## 11. CrowdSec Hub Integration
 
@@ -577,7 +588,161 @@ hub_rules (
 )
 ```
 
-## 12. Existing Worktrees (Reference)
+## 12. Multi-Source IP Threat Intelligence
+
+Veil aggregates open-source IP blocklists into a tiered reputation system that pre-seeds the behavioral engine. This provides day-zero protection before Veil's AI has observed any traffic — known-bad IPs are blocked or scrutinized immediately.
+
+### Threat Feed Sources
+
+All sources are free, require no API keys, and are fetchable via plain HTTP GET.
+
+| Source | URL | Update Freq | Size | Format | Tier |
+|--------|-----|-------------|------|--------|------|
+| **Spamhaus DROP** | `spamhaus.org/drop/drop.txt` | Daily | ~2,600 CIDRs | CIDR + SBL ref | 1 (ban) |
+| **Spamhaus EDROP** | `spamhaus.org/drop/edrop.txt` | Daily | ~500 CIDRs | CIDR + SBL ref | 1 (ban) |
+| **FireHOL level1** | `github:firehol/blocklist-ipsets` `firehol_level1.netset` | Daily | ~4,500 CIDRs | CIDR netset | 1 (ban) |
+| **borestad/abuseipdb** (30d) | `github:borestad/blocklist-abuseipdb` `abuseipdb-s100-30d.ipv4` | Multi/day | ~142,000 IPs | IP per line | 2 (block) |
+| **IPsum** (level 3+) | `github:stamparm/ipsum` `levels/3.txt` | Daily | ~5,000 IPs | IP per line | 2 (block) |
+| **Blocklist.de** (all) | `lists.blocklist.de/lists/all.txt` | 30 min | ~25,000 IPs | IP per line | 3 (scrutinize) |
+| **CINS Army** | `cinsscore.com/list/ci-badguys.txt` | Continuous | ~10,000 IPs | IP per line | 3 (scrutinize) |
+| **Emerging Threats** | `rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt` | Continuous | ~3,500 entries | CIDR + IPs | 3 (scrutinize) |
+| **Tor Exit Nodes** | `check.torproject.org/torbulkexitlist` | Continuous | ~1,600 IPs | IP per line | configurable |
+
+### Tier System
+
+| Tier | Action | Reputation Score | Description |
+|------|--------|-----------------|-------------|
+| **1 — Immediate Ban** | Skip all classification → BAN | 0.95 | Criminal/hijacked networks. Near-zero false positives. |
+| **2 — High-Confidence Block** | Skip to Stage 3 (Crusoe) or BAN | 0.80 | IPs flagged by multiple independent sources at 99%+ confidence. |
+| **3 — Elevated Scrutiny** | Skip regex fast-path → force LLM | 0.60 | Active attackers with moderate confidence. Recent observations. |
+| **Tor** | Configurable per-site | 0.40-0.80 | Some sites allow Tor, others don't. Site-level setting. |
+
+### Integration with Behavioral Engine
+
+Threat feeds pre-seed the `ip_reputation` table and in-memory map:
+
+```go
+// On feed refresh, for each IP/CIDR in the feed:
+func (a *Aggregator) applyFeedEntry(ip string, tier int, source string) {
+    rep := behavioral.GetOrCreateReputation(ip)
+    feedScore := tierToScore(tier) // tier 1 → 0.95, tier 2 → 0.80, tier 3 → 0.60
+    // Feed score only raises reputation, never lowers it
+    // (Veil's own observations can still push it higher)
+    if feedScore > rep.Score {
+        rep.Score = feedScore
+        rep.Sources = append(rep.Sources, source)
+    }
+}
+```
+
+When a request arrives from a Tier 1 IP, the behavioral engine's pre-filter catches it at Step 1 (IP reputation check, ~0ms) before regex even runs.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│  IP Threat Intelligence Aggregator           │
+│                                              │
+│  ┌─────────────┐  ┌──────────────────────┐  │
+│  │ Feed Config  │  │ Background Fetcher   │  │
+│  │ 9 sources    │  │ Per-feed intervals   │  │
+│  │ Tier mapping │  │ HTTP GET + parse     │  │
+│  └─────────────┘  │ Retry with backoff   │  │
+│                    └──────────────────────┘  │
+│                              │               │
+│                    ┌─────────▼────────────┐  │
+│                    │ Unified IP Set       │  │
+│                    │ map[string]IPEntry   │  │
+│                    │ + CIDR radix trie    │  │
+│                    │ Thread-safe (RWMutex)│  │
+│                    └─────────┬────────────┘  │
+│                              │               │
+│              ┌───────────────┼────────────┐  │
+│              ▼               ▼            ▼  │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────┐ │
+│  │ Behavioral   │ │ Pipeline     │ │  DB  │ │
+│  │ Engine       │ │ Pre-filter   │ │ Sync │ │
+│  │ (IP scores)  │ │ (fast check) │ │      │ │
+│  └──────────────┘ └──────────────┘ └──────┘ │
+└─────────────────────────────────────────────┘
+```
+
+### Feed Configuration
+
+Feeds are defined in code (not YAML config) for simplicity:
+
+```go
+type FeedConfig struct {
+    Name        string
+    URL         string
+    Format      string        // "ip_lines", "cidr_lines", "cidr_comments", "ipsum"
+    Tier        int           // 1, 2, or 3
+    RefreshRate time.Duration // how often to re-fetch
+    Enabled     bool
+}
+
+var DefaultFeeds = []FeedConfig{
+    {Name: "spamhaus-drop", URL: "https://www.spamhaus.org/drop/drop.txt",
+     Format: "cidr_comments", Tier: 1, RefreshRate: 24 * time.Hour, Enabled: true},
+    {Name: "spamhaus-edrop", URL: "https://www.spamhaus.org/drop/edrop.txt",
+     Format: "cidr_comments", Tier: 1, RefreshRate: 24 * time.Hour, Enabled: true},
+    {Name: "firehol-level1", URL: "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset",
+     Format: "cidr_lines", Tier: 1, RefreshRate: 24 * time.Hour, Enabled: true},
+    {Name: "abuseipdb-30d", URL: "https://raw.githubusercontent.com/borestad/blocklist-abuseipdb/main/abuseipdb-s100-30d.ipv4",
+     Format: "ip_lines", Tier: 2, RefreshRate: 6 * time.Hour, Enabled: true},
+    {Name: "ipsum-level3", URL: "https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt",
+     Format: "ip_lines", Tier: 2, RefreshRate: 24 * time.Hour, Enabled: true},
+    {Name: "blocklist-de-all", URL: "https://lists.blocklist.de/lists/all.txt",
+     Format: "ip_lines", Tier: 3, RefreshRate: 1 * time.Hour, Enabled: true},
+    {Name: "cins-army", URL: "https://cinsscore.com/list/ci-badguys.txt",
+     Format: "ip_lines", Tier: 3, RefreshRate: 6 * time.Hour, Enabled: true},
+    {Name: "emerging-threats", URL: "https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt",
+     Format: "cidr_comments", Tier: 3, RefreshRate: 12 * time.Hour, Enabled: true},
+    {Name: "tor-exit-nodes", URL: "https://check.torproject.org/torbulkexitlist",
+     Format: "ip_lines", Tier: 3, RefreshRate: 1 * time.Hour, Enabled: true},
+}
+```
+
+### CIDR Matching
+
+For individual IPs (most lists), a `map[string]IPEntry` provides O(1) lookup. For CIDR ranges (Spamhaus, FireHOL, Emerging Threats), we use Go's `net.IPNet.Contains()` with a slice of parsed CIDRs. At ~7,500 CIDRs total across Tier 1 sources, iterating is fast enough (~1μs). If scale demands it, a radix trie (`net/netip.Prefix` with sorted slice + binary search) can be added later.
+
+### Directory Structure Addition
+
+```
+go-backend/internal/intel/
+├── aggregator.go   -- Background fetcher, refresh scheduling, unified IP set
+├── feeds.go        -- Feed definitions, format parsers (ip_lines, cidr_lines, etc.)
+├── ipset.go        -- Thread-safe IP/CIDR lookup data structure
+└── types.go        -- FeedConfig, IPEntry, FeedStatus structs
+```
+
+### New Database Table
+
+```sql
+-- Track threat feed freshness and stats
+threat_feeds (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,     -- e.g., "spamhaus-drop"
+    url TEXT NOT NULL,
+    tier INTEGER NOT NULL,
+    last_fetch TEXT,               -- ISO 8601 timestamp
+    last_success TEXT,
+    entry_count INTEGER DEFAULT 0, -- IPs/CIDRs loaded from this feed
+    error TEXT,                    -- last error message if any
+    enabled BOOLEAN DEFAULT 1
+)
+```
+
+### Environment Variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `INTEL_ENABLED` | Enable/disable threat feed aggregation | `true` |
+| `INTEL_REFRESH_ON_START` | Fetch all feeds on startup | `true` |
+| `INTEL_TOR_TIER` | Tor exit node tier (1-3 or 0 to ignore) | `3` |
+
+## 13. Existing Worktrees (Reference)
 
 The four prototype worktrees remain available for reference:
 - `.worktrees/go-langchaingo` — LangChainGo approach
