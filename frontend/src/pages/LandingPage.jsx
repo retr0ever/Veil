@@ -130,9 +130,8 @@ export function LandingPage() {
 
               <div className="flex w-full justify-center md:self-center">
                 <div className="w-full max-w-[820px] rounded-[12px] border border-[#6d6872]/70 bg-[#151022] p-5 md:p-6">
-                <div className="mb-5 flex items-center justify-between border-b border-[#6d6872]/55 pb-3 text-[13px] tracking-[0.16em] text-[#b5acbf]">
+                <div className="mb-5 flex items-center justify-between border-b border-[#6d6872]/55 pb-3 text-[15px] tracking-[0.16em] text-[#b5acbf] md:text-[16px]">
                   <span>VEIL / HOW IT WORKS</span>
-                  <span>LIVE</span>
                 </div>
 
                 <div className="relative min-h-[420px] md:min-h-[460px]">
@@ -229,8 +228,8 @@ function HowItWorksPreview({ index }) {
   if (index === 0) {
     return (
       <div className="space-y-6">
-        <p className="text-[15px] tracking-[0.16em] text-[#b9b0c5]">PROTECTED URL: https://veil.sh/p/site_47a8</p>
-        <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4 text-center text-[16px]">
+        <p className="text-[20px] tracking-[0.16em] text-[#c3bbce] md:text-[22px]">PROTECTED URL: https://veil.sh/p/site_47a8</p>
+        <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4 text-center text-[24px]">
           <Node label="Client" />
           <Arrow />
           <Node label="VEIL" />
@@ -244,7 +243,7 @@ function HowItWorksPreview({ index }) {
   if (index === 1) {
     return (
       <div className="space-y-5">
-        <p className="text-[16px] text-[#cfc7d9]">Classification</p>
+        <p className="text-[21px] text-[#d5cede]">Classification</p>
         <ClassRow label="SAFE" pct={86} color="#8fd9a7" />
         <ClassRow label="SUSPICIOUS" pct={47} color="#f2c77a" />
         <ClassRow label="MALICIOUS" pct={64} color="#f09ca8" />
@@ -255,10 +254,10 @@ function HowItWorksPreview({ index }) {
   if (index === 2) {
     return (
       <div className="rounded-[10px] border border-[#7a7385] bg-[#120d1e] p-5">
-        <p className="text-[14px] tracking-[0.12em] text-[#d6cfde]">FINAL VERDICT</p>
-        <p className="mt-2 text-[30px] font-semibold text-[#f08a95]">MALICIOUS</p>
-        <p className="mt-1 text-[20px] text-[#f2cf90]">SQLi (High)</p>
-        <p className="mt-4 text-[18px] leading-[1.45] text-[#b8aec4]">
+        <p className="text-[18px] tracking-[0.12em] text-[#d6cfde]">FINAL VERDICT</p>
+        <p className="mt-2 text-[40px] font-semibold text-[#f08a95]">MALICIOUS</p>
+        <p className="mt-1 text-[26px] text-[#f2cf90]">SQLi (High)</p>
+        <p className="mt-4 text-[23px] leading-[1.45] text-[#b8aec4]">
           Pattern matched boolean-based injection payload in query parameter `id`.
         </p>
       </div>
@@ -268,17 +267,17 @@ function HowItWorksPreview({ index }) {
   if (index === 3) {
     return (
       <div className="overflow-hidden rounded-[10px] border border-[#6f687c]">
-        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c] bg-[#1a1527] px-4 py-3 text-[14px] tracking-[0.12em] text-[#aaa1b7]">
+        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c] bg-[#1a1527] px-4 py-3 text-[18px] tracking-[0.12em] text-[#aaa1b7]">
           <span>STATUS</span>
           <span>REQUEST</span>
           <span>ACTION</span>
         </div>
-        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c]/60 bg-[#261420] px-4 py-3 text-[17px]">
+        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c]/60 bg-[#261420] px-4 py-3 text-[22px]">
           <span className="text-[#f08a95]">BLOCK</span>
           <span className="text-[#d0c8db]">GET /users?id=' OR 1=1</span>
           <span className="text-[#f08a95]">403</span>
         </div>
-        <div className="grid grid-cols-[150px_1fr_130px] bg-[#12211b] px-4 py-3 text-[17px]">
+        <div className="grid grid-cols-[150px_1fr_130px] bg-[#12211b] px-4 py-3 text-[22px]">
           <span className="text-[#8fd9a7]">FORWARD</span>
           <span className="text-[#d0c8db]">GET /products?page=2</span>
           <span className="text-[#8fd9a7]">200</span>
@@ -305,17 +304,17 @@ function Node({ label }) {
 }
 
 function Arrow() {
-  return <span className="text-[18px] text-[#8f86a2]">-&gt;</span>
+  return <span className="text-[30px] text-[#8f86a2]">-&gt;</span>
 }
 
 function ClassRow({ label, pct, color }) {
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between text-[15px]">
+      <div className="mb-2 flex items-center justify-between text-[21px]">
         <span className="text-[#ddd5e6]">{label}</span>
         <span className="text-[#a79cb5]">{pct}%</span>
       </div>
-      <div className="h-3 overflow-hidden rounded-[5px] bg-[#241c31]">
+      <div className="h-4 overflow-hidden rounded-[5px] bg-[#241c31]">
         <div className="h-full" style={{ width: `${pct}%`, background: color }} />
       </div>
     </div>
@@ -324,7 +323,7 @@ function ClassRow({ label, pct, color }) {
 
 function TimelineItem({ text, color }) {
   return (
-    <div className="flex items-center gap-4 rounded-[8px] border border-[#6f687c] bg-[#1a1527] px-5 py-4 text-[17px] text-[#d8d0e2]">
+    <div className="flex items-center gap-4 rounded-[8px] border border-[#6f687c] bg-[#1a1527] px-5 py-4 text-[22px] text-[#d8d0e2]">
       <span className="h-3 w-3 rounded-full" style={{ background: color }} />
       <span>{text}</span>
     </div>

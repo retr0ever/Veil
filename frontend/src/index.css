@@ -9,6 +9,30 @@
 }
 
 @font-face {
+  font-family: 'Source Serif Pro';
+  src: url('/fonts/source-serif-pro/SourceSerifPro-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Source Serif Pro';
+  src: url('/fonts/source-serif-pro/SourceSerifPro-Semibold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Source Serif Pro';
+  src: url('/fonts/source-serif-pro/SourceSerifPro-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: 'ITC Benguiat Std';
   src: url('/fonts/itc-benguiat-std/ITCBenguiatStdBookCn.OTF') format('opentype');
   font-weight: 400;
@@ -44,8 +68,8 @@
   --color-text: #f2f6ff;
   --color-muted: #8390aa;
   --color-dim: #a8b0c3;
-  --font-sans: 'ITC New Baskerville Roman', 'Times New Roman', serif;
-  --font-mono: 'ITC New Baskerville Roman', 'Times New Roman', serif;
+  --font-sans: 'Source Serif Pro', 'Times New Roman', serif;
+  --font-mono: 'Source Serif Pro', 'Times New Roman', serif;
 }
 
 * {
@@ -112,7 +136,7 @@ a {
 }
 
 .font-hero {
-  font-family: 'Heartland Script', 'ITC New Baskerville Roman', serif;
+  font-family: 'Heartland Script', 'Source Serif Pro', serif;
   font-style: normal;
   font-weight: 400;
 }
