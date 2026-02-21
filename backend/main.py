@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from pydantic import BaseModel
 
@@ -636,6 +636,35 @@ async def delete_site(site_id: str, request: Request):
         await db.commit()
 
     return {"ok": True}
+
+
+# --- Reverse proxy info page ---
+@app.get("/p/{site_id}")
+async def proxy_info(site_id: str):
+    """Show info page when someone visits the proxy root in a browser."""
+    async with get_db() as db:
+        cursor = await db.execute("SELECT target_url FROM sites WHERE site_id = ?", (site_id,))
+        row = await cursor.fetchone()
+    if not row:
+        return JSONResponse(status_code=404, content={"error": "Site not found"})
+    return HTMLResponse(f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Veil Protected Endpoint</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:system-ui,-apple-system,sans-serif;background:#1a1322;color:#e2dfe8;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem}}
+.card{{max-width:520px;width:100%;border:1px solid rgba(255,255,255,0.08);border-radius:16px;background:rgba(16,20,31,0.8);padding:2.5rem}}
+h1{{font-size:1.5rem;margin-bottom:.5rem}}p{{color:#8a8594;line-height:1.6;margin-top:.75rem;font-size:.95rem}}
+.badge{{display:inline-block;background:rgba(99,167,255,0.1);color:#63a7ff;font-size:.75rem;font-weight:600;padding:.25rem .75rem;border-radius:6px;letter-spacing:.05em;margin-bottom:1rem}}
+.url{{background:#0e1219;border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:.75rem 1rem;font-family:monospace;font-size:.85rem;color:#8fd9a7;margin-top:.75rem;word-break:break-all}}
+a{{color:#63a7ff;text-decoration:none}}a:hover{{text-decoration:underline}}</style></head>
+<body><div class="card">
+<div class="badge">PROTECTED ENDPOINT</div>
+<h1>This is your Veil proxy</h1>
+<p>This URL is a reverse-proxy endpoint, not a webpage. Route your API traffic through it to get Veil's protection.</p>
+<p style="color:#e2dfe8;font-size:.85rem;margin-top:1.25rem">Upstream target:</p>
+<div class="url">{row[0]}</div>
+<p style="color:#e2dfe8;font-size:.85rem;margin-top:1.25rem">Example usage:</p>
+<div class="url">curl {request.url}/your-endpoint</div>
+<p style="margin-top:1.5rem"><a href="/app/projects/{site_id}">Open dashboard &rarr;</a></p>
+</div></body></html>""")
 
 
 # --- Reverse proxy ---
