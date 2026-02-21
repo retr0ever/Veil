@@ -1,12 +1,13 @@
 """Patch — Adaptation Agent. Analyses WAF bypasses and updates detection rules."""
 
-import anthropic
+from anthropic import AsyncAnthropicBedrock
 import json
 import os
 from datetime import datetime
 from ..db.database import get_db
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
+BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "global.anthropic.claude-sonnet-4-5-20250929-v1:0")
 
 
 async def run(bypasses: list[dict]):
@@ -37,11 +38,11 @@ async def run(bypasses: list[dict]):
     verified = 0
 
     # Try Claude-based patching if API key is available
-    if ANTHROPIC_API_KEY and ANTHROPIC_API_KEY != "placeholder":
+    if os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("AWS_PROFILE"):
         try:
-            client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+            client = AsyncAnthropicBedrock(aws_region=AWS_REGION)
             response = await client.messages.create(
-                model="claude-sonnet-4-5-20250929",
+                model=BEDROCK_MODEL,
                 max_tokens=3000,
                 system="""You are a WAF (web application firewall) security engineer. You are given bypass reports showing HTTP attack payloads that got past the current firewall rules. Analyse WHY each bypass succeeded and generate UPDATED detection prompts.
 

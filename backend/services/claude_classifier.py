@@ -1,4 +1,4 @@
-import anthropic
+from anthropic import AsyncAnthropicBedrock
 import json
 import os
 import time
@@ -6,16 +6,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
+BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "global.anthropic.claude-sonnet-4-5-20250929-v1:0")
 
 
 async def classify(user_message: str, system_prompt: str) -> dict:
     start = time.time()
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    client = AsyncAnthropicBedrock(aws_region=AWS_REGION)
 
     try:
         response = await client.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            model=BEDROCK_MODEL,
             max_tokens=300,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],

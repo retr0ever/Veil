@@ -1,12 +1,13 @@
 """Peek — Scout Agent. Discovers new web application attack techniques."""
 
-import anthropic
+from anthropic import AsyncAnthropicBedrock
 import json
 import os
 from datetime import datetime
 from ..db.database import get_db
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
+BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "global.anthropic.claude-sonnet-4-5-20250929-v1:0")
 
 # Seed techniques: real-world web attack payloads
 SEED_TECHNIQUES = [
@@ -159,11 +160,11 @@ async def run():
     known_list = "\n".join([f"- {row[0]} ({row[2]}): {row[1][:150]}" for row in known]) if known else ""
 
     # Phase 2: Generate novel variations via Claude (DB closed during API call)
-    if known_list and ANTHROPIC_API_KEY and ANTHROPIC_API_KEY != "placeholder":
+    if known_list and (os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("AWS_PROFILE")):
         try:
-            client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+            client = AsyncAnthropicBedrock(aws_region=AWS_REGION)
             response = await client.messages.create(
-                model="claude-sonnet-4-5-20250929",
+                model=BEDROCK_MODEL,
                 max_tokens=2000,
                 system="""You are a security researcher cataloguing web application attack techniques for a WAF (web application firewall). Generate novel variations of known attacks that might bypass pattern-based detection.
 

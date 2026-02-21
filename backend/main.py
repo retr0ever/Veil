@@ -358,9 +358,8 @@ async def classify_request(raw_request: str):
     blocked = False
 
     crusoe_key = os.getenv("CRUSOE_API_KEY", "")
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
     has_crusoe = crusoe_key and crusoe_key != "placeholder"
-    has_claude = anthropic_key and anthropic_key != "placeholder"
+    has_claude = bool(os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("AWS_PROFILE"))
 
     # Stage 1: Crusoe fast check (only if API key is real)
     if has_crusoe:
