@@ -23,6 +23,22 @@ SEVERITY_WEIGHT = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 # ---------------------------------------------------------------------------
 
 
+async def _select_targets_by_ids(ids: list[int]) -> list[dict]:
+    """Load specific threats by ID for targeted verification re-poke."""
+
+    if not ids:
+        return []
+
+    placeholders = ",".join("?" for _ in ids)
+    async with get_db() as db:
+        cursor = await db.execute(
+            f"SELECT id, technique_name, raw_payload, category, severity "
+            f"FROM threats WHERE id IN ({placeholders})",
+            tuple(ids),
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+
+
 async def _select_targets() -> list[dict]:
     """Pick which techniques to test this cycle, prioritised by value.
 
@@ -289,11 +305,17 @@ async def _log_results(bypasses: list[dict], summary: dict):
 # ---------------------------------------------------------------------------
 
 
-async def run() -> list[dict]:
-    """Run the Poke red team agent. Returns list of bypass dicts (sorted by danger)."""
+async def run(cycle_ctx: dict | None = None, target_ids: list[int] | None = None) -> list[dict]:
+    """Run the Poke red team agent. Returns list of bypass dicts (sorted by danger).
+
+    If target_ids is provided, only those specific threats are tested (verification re-poke).
+    """
 
     # Phase 1: Target selection
-    targets = await _select_targets()
+    if target_ids:
+        targets = await _select_targets_by_ids(target_ids)
+    else:
+        targets = await _select_targets()
 
     if not targets:
         async with get_db() as db:
@@ -318,5 +340,15 @@ async def run() -> list[dict]:
 
     # Phase 4: Logging
     await _log_results(bypasses, summary)
+
+    # Populate cycle context only on primary poke (not verification re-poke)
+    if cycle_ctx is not None and not target_ids:
+        cycle_ctx["tested_count"] = summary["total_tested"]
+        cycle_ctx["blocked_count"] = summary["blocked"]
+        cycle_ctx["bypasses"] = bypasses
+        cycle_ctx["bypass_categories"] = list(
+            {b.get("category", "unknown") for b in bypasses}
+        )
+        cycle_ctx["poke_summary"] = summary
 
     return bypasses

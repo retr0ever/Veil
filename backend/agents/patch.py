@@ -306,6 +306,22 @@ async def _mark_patched(bypasses: list[dict], verified: list[dict]):
 # ---------------------------------------------------------------------------
 
 
+def _populate_cycle_ctx(cycle_ctx: dict | None, result: dict, profile: dict, round_num: int):
+    """Append a round entry to cycle_ctx['patch_rounds']."""
+
+    if cycle_ctx is None:
+        return
+
+    cycle_ctx.setdefault("patch_rounds", []).append({
+        "round": round_num,
+        "patched": result.get("patched", 0),
+        "verified": result.get("verified", 0),
+        "still_bypassing": len(result.get("still_bypassing", [])),
+        "dominant_failure": result.get("dominant_failure", "unknown"),
+        "rules_version": result.get("rules_version", 0),
+    })
+
+
 async def _heuristic_patch(
     bypasses: list[dict],
     current_version: int,
@@ -341,7 +357,14 @@ async def _heuristic_patch(
         )
         await db.commit()
 
-    return {"patched": len(bypasses), "verified": 0}
+    return {
+        "patched": len(bypasses),
+        "verified": 0,
+        "still_bypassing": [],
+        "dominant_failure": "unknown",
+        "failure_modes": {},
+        "rules_version": new_version,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -349,11 +372,19 @@ async def _heuristic_patch(
 # ---------------------------------------------------------------------------
 
 
-async def run(bypasses: list[dict]) -> dict:
-    """Run the Patch adaptation agent. Returns {patched, verified}."""
+async def run(bypasses: list[dict], cycle_ctx: dict | None = None) -> dict:
+    """Run the Patch adaptation agent.
+
+    Returns enriched dict: {patched, verified, still_bypassing, dominant_failure,
+    failure_modes, rules_version}.
+    """
 
     if not bypasses:
-        return {"patched": 0, "verified": 0}
+        return {
+            "patched": 0, "verified": 0,
+            "still_bypassing": [], "dominant_failure": "unknown",
+            "failure_modes": {}, "rules_version": 0,
+        }
 
     # Load current rules
     async with get_db() as db:
@@ -368,15 +399,24 @@ async def run(bypasses: list[dict]) -> dict:
 
     # Phase 2+3: Generate patch via LLM (or fall back to heuristic)
     if not (os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("AWS_PROFILE")):
-        return await _heuristic_patch(bypasses, current_version, current_crusoe, current_claude)
+        result = await _heuristic_patch(bypasses, current_version, current_crusoe, current_claude)
+        round_num = len((cycle_ctx or {}).get("patch_rounds", [])) + 1
+        _populate_cycle_ctx(cycle_ctx, result, profile, round_num)
+        return result
 
     try:
         update = await _generate_patch(bypasses, profile, current_crusoe, current_claude)
     except Exception:
-        return await _heuristic_patch(bypasses, current_version, current_crusoe, current_claude)
+        result = await _heuristic_patch(bypasses, current_version, current_crusoe, current_claude)
+        round_num = len((cycle_ctx or {}).get("patch_rounds", [])) + 1
+        _populate_cycle_ctx(cycle_ctx, result, profile, round_num)
+        return result
 
     if not update:
-        return await _heuristic_patch(bypasses, current_version, current_crusoe, current_claude)
+        result = await _heuristic_patch(bypasses, current_version, current_crusoe, current_claude)
+        round_num = len((cycle_ctx or {}).get("patch_rounds", [])) + 1
+        _populate_cycle_ctx(cycle_ctx, result, profile, round_num)
+        return result
 
     # Phase 4: Deploy new rules
     analysis = update.get("analysis", "No analysis provided")
@@ -392,18 +432,34 @@ async def run(bypasses: list[dict]) -> dict:
 
     patched = len(bypasses)
 
+    # Compute still-bypassing list from verification results
+    verified_map = {v["threat_id"]: v for v in verified}
+    still_bypassing = [
+        {"threat_id": b["threat_id"], "technique_name": b["technique_name"],
+         "category": b.get("category", "unknown"), "failure_mode": b.get("failure_mode", "unknown")}
+        for b in bypasses
+        if b["threat_id"] in verified_map and not verified_map[b["threat_id"]]["now_blocked"]
+    ]
+
+    # Build failure_modes summary
+    failure_modes_summary = {
+        mode: len(items) for mode, items in profile["by_failure_mode"].items()
+    }
+
     # Build log detail
     patterns_str = ", ".join(patterns_added[:5]) if patterns_added else "see updated prompts"
-    failure_modes = ", ".join(
+    failure_modes_str = ", ".join(
         f"{mode}({len(items)})"
         for mode, items in profile["by_failure_mode"].items()
     )
     detail = (
         f"v{current_version}->v{new_version}: {analysis[:150]}. "
-        f"Failure modes: [{failure_modes}]. "
+        f"Failure modes: [{failure_modes_str}]. "
         f"Patterns added: {patterns_str}. "
         f"Verified {verified_blocked}/{len(verified)} now blocked."
     )
+    if still_bypassing:
+        detail += f" Still bypassing: {len(still_bypassing)}."
 
     if len(detail) > 500:
         detail = detail[:497] + "..."
@@ -421,4 +477,16 @@ async def run(bypasses: list[dict]) -> dict:
         )
         await db.commit()
 
-    return {"patched": patched, "verified": verified_blocked}
+    result = {
+        "patched": patched,
+        "verified": verified_blocked,
+        "still_bypassing": still_bypassing,
+        "dominant_failure": profile.get("dominant_failure", "unknown"),
+        "failure_modes": failure_modes_summary,
+        "rules_version": new_version,
+    }
+
+    round_num = len((cycle_ctx or {}).get("patch_rounds", [])) + 1
+    _populate_cycle_ctx(cycle_ctx, result, profile, round_num)
+
+    return result

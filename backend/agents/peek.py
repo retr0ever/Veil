@@ -397,6 +397,38 @@ def _select_strategies(recon: dict) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Hint-based strategy override (closed-loop)
+# ---------------------------------------------------------------------------
+
+_FAILURE_STRATEGY_MAP = {
+    "encoding_evasion": "encoding_chains",
+    "context_blind_spot": "context_shift",
+    "pattern_gap": "emerging_techniques",
+    "semantic_miss": "cross_category",
+    "confidence_underflow": "target_weak_spots",
+}
+
+
+def _apply_hint_override(strategies: list[str], hint: dict, recon: dict) -> list[str]:
+    """Override strategy list using failure hints from the previous cycle."""
+
+    if not hint:
+        return strategies
+
+    # Map dominant failure mode to a counter-strategy
+    dominant = hint.get("dominant_failure_mode")
+    counter = _FAILURE_STRATEGY_MAP.get(dominant)
+    if counter and counter not in strategies:
+        strategies = [counter] + strategies[:1]
+
+    # If previous cycle still had active bypasses, always include mutate_bypasses
+    if hint.get("still_bypassing_count", 0) > 0 and "mutate_bypasses" not in strategies:
+        strategies.append("mutate_bypasses")
+
+    return strategies
+
+
+# ---------------------------------------------------------------------------
 # Phase 3: Generation
 # ---------------------------------------------------------------------------
 
@@ -525,10 +557,11 @@ async def _store(techniques: list[dict], strategy: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-async def run() -> int:
+async def run(cycle_ctx: dict | None = None) -> int:
     """Run the Peek scout agent. Returns count of new techniques discovered."""
 
     added = 0
+    hint = (cycle_ctx or {}).get("hint")
 
     # ── Seed techniques ──────────────────────────────────────────────────
     async with get_db() as db:
@@ -559,8 +592,13 @@ async def run() -> int:
     # ── Phase 2: Strategy Selection ──────────────────────────────────────
     strategies = _select_strategies(recon)
 
+    # Apply hint override from previous cycle
+    if hint:
+        strategies = _apply_hint_override(strategies, hint, recon)
+
     # ── Phase 3 & 4: Generation + Storage ────────────────────────────────
     strategy_used = strategies[0]  # Primary strategy for logging
+    categories_discovered = set()
 
     if os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("AWS_PROFILE"):
         for strategy in strategies:
@@ -569,6 +607,10 @@ async def run() -> int:
                 stored = await _store(techniques, strategy)
                 added += stored
                 strategy_used = strategy
+                for t in techniques:
+                    cat = t.get("category")
+                    if cat:
+                        categories_discovered.add(cat)
             except Exception:
                 # Graceful degradation — log failure but continue
                 async with get_db() as db:
@@ -588,6 +630,8 @@ async def run() -> int:
     detail = f"Discovered {added} techniques via {strategy_used} strategy"
     if len(strategies) > 1:
         detail += f" (+{strategies[1]} secondary)"
+    if hint:
+        detail += f" [hint: {hint.get('dominant_failure_mode', 'none')}]"
 
     async with get_db() as db:
         await db.execute(
@@ -601,5 +645,11 @@ async def run() -> int:
             ),
         )
         await db.commit()
+
+    # ── Populate cycle context ───────────────────────────────────────────
+    if cycle_ctx is not None:
+        cycle_ctx["discovered_count"] = added
+        cycle_ctx["strategies_used"] = strategies
+        cycle_ctx["categories_discovered"] = sorted(categories_discovered)
 
     return added
