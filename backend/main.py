@@ -616,6 +616,28 @@ async def list_sites(request: Request):
     return [{"site_id": r[0], "target_url": r[1], "created_at": r[2]} for r in rows]
 
 
+@app.delete("/api/sites/{site_id}")
+async def delete_site(site_id: str, request: Request):
+    """Delete a site owned by the current user."""
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT site_id FROM sites WHERE site_id = ? AND user_id = ?",
+            (site_id, user["id"]),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return JSONResponse(status_code=404, content={"error": "Site not found"})
+
+        await db.execute("DELETE FROM sites WHERE site_id = ? AND user_id = ?", (site_id, user["id"]))
+        await db.commit()
+
+    return {"ok": True}
+
+
 # --- Reverse proxy ---
 @app.api_route("/p/{site_id}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"])
 async def proxy(site_id: str, path: str, request: Request):

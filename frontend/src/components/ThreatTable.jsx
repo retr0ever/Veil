@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { humaniseAttackType } from '../lib/humanise'
+import { humaniseAttackType, codeFixForCategory } from '../lib/humanise'
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 }
 
@@ -180,30 +180,55 @@ export function ThreatTable() {
                 </button>
 
                 {/* Expanded threat rows */}
-                {isOpen && group.threats.map((t) => (
-                  <div
-                    key={t.id}
-                    className="flex items-center gap-3 border-b border-border/30 bg-surface/20 py-2.5 pl-14 pr-6"
-                  >
-                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.blocked ? 'bg-safe' : 'bg-blocked'}`} />
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-dim">
-                      {t.technique_name}
-                    </span>
-                    {(t.source === 'ai' || t.source === 'ai-generated') && (
-                      <span className="shrink-0 rounded bg-agent/10 px-1.5 py-0.5 text-[10px] font-medium text-agent">AI</span>
-                    )}
-                    {t.blocked ? (
-                      <svg width="12" height="12" viewBox="0 0 16 16" className="shrink-0 text-safe">
-                        <path d="M6.5 12L2 7.5l1.4-1.4L6.5 9.2l6.1-6.1L14 4.5z" fill="currentColor" />
-                      </svg>
-                    ) : (
-                      <span className="relative flex h-2 w-2 shrink-0">
-                        <span className="absolute inline-flex h-full w-full rounded-full bg-blocked opacity-40" style={{ animation: 'ping 2s cubic-bezier(0,0,0.2,1) infinite' }} />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-blocked" />
-                      </span>
-                    )}
-                  </div>
-                ))}
+                {isOpen && (
+                  <>
+                    {group.threats.map((t) => (
+                      <div
+                        key={t.id}
+                        className="flex items-center gap-3 border-b border-border/30 bg-surface/20 py-2.5 pl-14 pr-6"
+                      >
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.blocked ? 'bg-safe' : 'bg-blocked'}`} />
+                        <span className="min-w-0 flex-1 truncate text-[13px] text-dim">
+                          {t.technique_name}
+                        </span>
+                        {(t.source === 'ai' || t.source === 'ai-generated') && (
+                          <span className="shrink-0 rounded bg-agent/10 px-1.5 py-0.5 text-[10px] font-medium text-agent">AI</span>
+                        )}
+                        {t.blocked ? (
+                          <svg width="12" height="12" viewBox="0 0 16 16" className="shrink-0 text-safe">
+                            <path d="M6.5 12L2 7.5l1.4-1.4L6.5 9.2l6.1-6.1L14 4.5z" fill="currentColor" />
+                          </svg>
+                        ) : (
+                          <span className="relative flex h-2 w-2 shrink-0">
+                            <span className="absolute inline-flex h-full w-full rounded-full bg-blocked opacity-40" style={{ animation: 'ping 2s cubic-bezier(0,0,0.2,1) infinite' }} />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-blocked" />
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {/* Suggested fix card */}
+                    {(() => {
+                      const fix = codeFixForCategory(group.category)
+                      return (
+                        <div className="mx-6 my-3 ml-14 rounded-lg border border-border/40 bg-surface/30 px-4 py-3">
+                          <div className="flex items-center gap-2 text-[13px] font-medium text-dim">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted">
+                              <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z" />
+                              <line x1="9" y1="21" x2="15" y2="21" />
+                            </svg>
+                            Suggested fix &mdash; {fix.title}
+                          </div>
+                          <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{fix.suggestion}</p>
+                          {fix.example && (
+                            <pre className="mt-2 overflow-x-auto rounded-md bg-black/20 px-3 py-2 text-[11px] leading-relaxed text-dim">
+                              <code>{fix.example}</code>
+                            </pre>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </>
+                )}
               </div>
             )
           })}
