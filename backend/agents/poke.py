@@ -1,4 +1,4 @@
-"""Poke — Red Team Agent. Tests Veil's own defences by attacking with known techniques."""
+"""Poke — Red Team Agent. Tests Veil's WAF defences by firing known web attack payloads."""
 
 import httpx
 import json

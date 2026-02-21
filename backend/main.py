@@ -6,10 +6,10 @@ from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from .db.database import get_db, init_db
@@ -110,11 +110,13 @@ app.add_middleware(
 
 
 # --- Models ---
-class ChatRequest(BaseModel):
-    model: str = "gpt-4"
-    messages: list[dict]
-    temperature: float = 1.0
-    max_tokens: int | None = None
+class InspectRequest(BaseModel):
+    """Submit a raw HTTP request for classification."""
+    method: str = "GET"
+    path: str = "/"
+    headers: dict = {}
+    body: str = ""
+    query_params: dict = {}
 
 
 class ClassifyRequest(BaseModel):
@@ -122,6 +124,22 @@ class ClassifyRequest(BaseModel):
 
 
 # --- Helper ---
+def format_raw_request(req: InspectRequest) -> str:
+    """Format an InspectRequest into a raw HTTP request string for the classifier."""
+    query_string = ""
+    if req.query_params:
+        query_string = "?" + "&".join(f"{k}={v}" for k, v in req.query_params.items())
+
+    lines = [f"{req.method} {req.path}{query_string} HTTP/1.1"]
+    for k, v in req.headers.items():
+        lines.append(f"{k}: {v}")
+
+    raw = "\n".join(lines)
+    if req.body:
+        raw += f"\n\n{req.body}"
+    return raw
+
+
 async def get_current_rules():
     db = await get_db()
     cursor = await db.execute("SELECT crusoe_prompt, claude_prompt, version FROM rules ORDER BY version DESC LIMIT 1")
@@ -150,25 +168,18 @@ async def get_stats_data():
     }
 
 
-# --- Proxy endpoint ---
-@app.post("/v1/chat/completions")
-async def proxy_chat(req: ChatRequest):
-    """Main proxy endpoint. Classifies then forwards or blocks."""
-    user_message = ""
-    for msg in reversed(req.messages):
-        if msg.get("role") == "user":
-            user_message = msg.get("content", "")
-            break
-
-    if not user_message:
-        return {"error": "No user message found"}
+# --- Main firewall endpoint ---
+@app.post("/v1/inspect")
+async def inspect_request(req: InspectRequest):
+    """Main firewall endpoint. Accepts an HTTP request, classifies it, returns verdict."""
+    raw_request = format_raw_request(req)
 
     rules = await get_current_rules()
     if not rules:
         return {"error": "No classification rules loaded"}
 
     # Step 1: Crusoe fast classification
-    crusoe_result = await crusoe_classifier.classify(user_message, rules["crusoe_prompt"])
+    crusoe_result = await crusoe_classifier.classify(raw_request, rules["crusoe_prompt"])
     classification = crusoe_result.get("classification", "SUSPICIOUS")
     confidence = crusoe_result.get("confidence", 0.5)
 
@@ -177,7 +188,7 @@ async def proxy_chat(req: ChatRequest):
 
     # Step 2: If suspicious/malicious, escalate to Claude
     if classification in ("SUSPICIOUS", "MALICIOUS"):
-        claude_result = await claude_classifier.classify(user_message, rules["claude_prompt"])
+        claude_result = await claude_classifier.classify(raw_request, rules["claude_prompt"])
         final_result = claude_result
         classification = claude_result.get("classification", "SUSPICIOUS")
         confidence = claude_result.get("confidence", 0.5)
@@ -188,11 +199,11 @@ async def proxy_chat(req: ChatRequest):
     # Log request
     db = await get_db()
     await db.execute(
-        """INSERT INTO request_log (timestamp, user_message, classification, confidence, classifier, blocked, attack_type, response_time_ms)
+        """INSERT INTO request_log (timestamp, raw_request, classification, confidence, classifier, blocked, attack_type, response_time_ms)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             datetime.utcnow().isoformat(),
-            user_message[:500],
+            raw_request[:500],
             classification,
             confidence,
             final_result.get("classifier", "unknown"),
@@ -208,43 +219,31 @@ async def proxy_chat(req: ChatRequest):
     await ws_manager.broadcast({
         "type": "request",
         "timestamp": datetime.utcnow().isoformat(),
-        "message": user_message[:100],
+        "message": raw_request[:120],
         "classification": classification,
         "confidence": confidence,
         "blocked": blocked,
         "classifier": final_result.get("classifier", "unknown"),
+        "attack_type": final_result.get("attack_type", "none"),
     })
 
     if blocked:
         return {
-            "error": {
-                "message": "Request blocked by Veil security firewall",
-                "type": "security_block",
-                "classification": classification,
-                "attack_type": final_result.get("attack_type", "unknown"),
-            }
-        }
-
-    # Forward to target LLM (mock for hackathon)
-    return {
-        "id": "veil-" + datetime.utcnow().strftime("%Y%m%d%H%M%S"),
-        "object": "chat.completion",
-        "choices": [
-            {
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": f"[Veil: PASSED] Request classified as {classification} (confidence: {confidence}). In production, this would be forwarded to {req.model}.",
-                },
-                "finish_reason": "stop",
-            }
-        ],
-        "veil": {
+            "verdict": "BLOCKED",
             "classification": classification,
             "confidence": confidence,
-            "classifier": final_result.get("classifier"),
+            "attack_type": final_result.get("attack_type", "unknown"),
+            "reason": final_result.get("reason", ""),
             "rules_version": rules["version"],
-        },
+        }
+
+    return {
+        "verdict": "PASS",
+        "classification": classification,
+        "confidence": confidence,
+        "attack_type": final_result.get("attack_type", "none"),
+        "reason": final_result.get("reason", ""),
+        "rules_version": rules["version"],
     }
 
 

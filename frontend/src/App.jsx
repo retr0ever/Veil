@@ -18,7 +18,7 @@ function App() {
       <div className="flex items-center justify-between px-4 py-2 border-b border-border">
         <div className="flex items-center gap-3">
           <span className="text-[16px] font-bold tracking-tight">VEIL</span>
-          <span className="text-muted text-[11px]">self-improving llm firewall</span>
+          <span className="text-muted text-[11px]">self-improving ai-powered firewall</span>
         </div>
         <div className="flex items-center gap-3">
           <div className="w-1.5 h-1.5 bg-safe animate-pulse" />

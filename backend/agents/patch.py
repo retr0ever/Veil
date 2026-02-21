@@ -1,4 +1,4 @@
-"""Patch — Adaptation Agent. Analyses bypasses and updates detection rules."""
+"""Patch — Adaptation Agent. Analyses WAF bypasses and updates detection rules."""
 
 import anthropic
 import json
@@ -39,11 +39,13 @@ async def run(bypasses: list[dict]):
     response = await client.messages.create(
         model="claude-sonnet-4-5-20250929",
         max_tokens=3000,
-        system="""You are an AI security engineer. You are given bypass reports showing attacks that got past the current firewall rules. Analyse WHY each bypass succeeded and generate UPDATED detection prompts.
+        system="""You are a WAF (web application firewall) security engineer. You are given bypass reports showing HTTP attack payloads that got past the current firewall rules. Analyse WHY each bypass succeeded and generate UPDATED detection prompts.
+
+The firewall uses AI models to classify raw HTTP requests. The prompts you generate must teach the classifier to recognise web attack patterns including SQL injection, XSS, path traversal, command injection, SSRF, RCE, XXE, header injection, auth bypass, and encoding evasion techniques.
 
 You must output ONLY a JSON object with:
 {
-    "analysis": "Brief explanation of what the current rules missed",
+    "analysis": "Brief explanation of what the current rules missed and what evasion technique was used",
     "crusoe_prompt": "The COMPLETE updated system prompt for the fast Crusoe classifier. Include ALL existing patterns plus new ones to catch these bypasses.",
     "claude_prompt": "The COMPLETE updated system prompt for the deep Claude classifier. Include ALL existing patterns plus new ones."
 }

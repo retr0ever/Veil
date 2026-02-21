@@ -1,18 +1,18 @@
 # Veil
 
-A self-improving AI firewall that continuously discovers new LLM attack techniques, red-teams itself, and auto-patches its own defences.
+A self-improving AI-powered firewall that continuously discovers new web attack techniques, red-teams itself, and auto-patches its own defences.
 
 ## Architecture
 
 ```
-User request → Veil API (Crusoe fast filter → Claude deep classifier)
-  → Safe: forward to target LLM
+HTTP request → Veil WAF (Crusoe fast filter → Claude deep classifier)
+  → Safe: forward to application
   → Malicious: block + log + update rules
 
 Background agents:
-  Peek (scout)  → discovers new attack techniques
-  Poke (red team) → tests Veil's own defences
-  Patch (adapt)  → analyses bypasses and strengthens rules
+  Peek (scout)    → discovers new web attack techniques (SQLi, XSS, RCE, etc.)
+  Poke (red team) → tests Veil's own defences with attack payloads
+  Patch (adapt)   → analyses bypasses and strengthens detection rules
 ```
 
 ## Stack
