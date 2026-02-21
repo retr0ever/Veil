@@ -317,6 +317,26 @@ export function LandingPage() {
           </div>
           <div className="mt-10 h-px w-full bg-[#848188]/70 md:mt-12" />
         </section>
+
+        <footer className="order-4 w-[calc(100%+3rem)] -mx-6 border-t border-[#848188]/60 bg-[#1a1322] opacity-50 md:w-[calc(100%+6rem)] md:-mx-12">
+          <div className="grid grid-cols-1 items-center gap-7 px-6 py-10 text-center md:grid-cols-[1fr_auto_1fr] md:px-12">
+            <div className="hidden md:block" />
+
+            <nav className="order-2 flex flex-wrap items-center justify-center gap-x-7 gap-y-3 text-center text-[14px] tracking-[0.12em] text-[#cec6d7] md:text-[15px]">
+              <a href="/terms" className="transition-opacity hover:opacity-80">TERMS &amp; CONDITIONS</a>
+              <a href="/privacy" className="transition-opacity hover:opacity-80">PRIVACY POLICY</a>
+              <a href="/security" className="transition-opacity hover:opacity-80">SECURITY</a>
+              <a href="/auth" className="transition-opacity hover:opacity-80">SIGN IN</a>
+            </nav>
+
+            <a
+              href="/"
+              className="order-1 justify-self-center font-logo font-logo-main text-[44px] leading-none text-[#f6f1f9]/50 md:order-3 md:justify-self-end md:text-[56px]"
+            >
+              VEIL.
+            </a>
+          </div>
+        </footer>
       </div>
     </div>
   )
