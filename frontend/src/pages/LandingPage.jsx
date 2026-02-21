@@ -1,6 +1,37 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
-const AGENT_LABELS = ['PEEK', 'POKE', 'PATCH']
+const AGENT_ITEMS = [
+  { id: 'peek', label: 'PEEK' },
+  { id: 'poke', label: 'POKE' },
+  { id: 'patch', label: 'PATCH' },
+]
+
+const AGENT_DETAILS = {
+  all: {
+    label: 'AGENTS',
+    title: 'Three agents. One loop.',
+    body: 'Peek discovers new attack techniques, Poke stress-tests Veil with variants, and Patch updates the rules - then verifies the fix by replaying the bypass.',
+    outputs: 'Threat intel • Bypass reports • Rule updates',
+  },
+  peek: {
+    label: 'AGENT: PEEK',
+    title: 'Scout / Threat Discovery',
+    body: 'Continuously collects emerging attack techniques and patterns, labels them by category and severity, and stores them in the threat intelligence database with sources.',
+    outputs: 'Threat intel • Sources • Severity',
+  },
+  poke: {
+    label: 'AGENT: POKE',
+    title: 'Red Team / Bypass Hunter',
+    body: 'Generates attack variations and fires them at Veil’s own classifier. Logs what gets blocked vs. what slips through, and escalates any bypass as a report for patching.',
+    outputs: 'Mutations • Bypass reports • Replay traces',
+  },
+  patch: {
+    label: 'AGENT: PATCH',
+    title: 'Adaptation / Auto-Patcher',
+    body: 'Analyzes why a bypass worked, updates the detection prompts/rules, redeploys immediately, and verifies the fix by re-running the exact same attack until it’s blocked.',
+    outputs: 'Prompt updates • Redeploys • Verified blocks',
+  },
+}
 
 const HOW_IT_WORKS_STEPS = [
   {
@@ -32,6 +63,16 @@ const HOW_IT_WORKS_STEPS = [
 
 export function LandingPage() {
   const [activeHowItWorks, setActiveHowItWorks] = useState(0)
+  const [activeAgent, setActiveAgent] = useState('all')
+  const [agentPanelVisible, setAgentPanelVisible] = useState(true)
+
+  useEffect(() => {
+    setAgentPanelVisible(false)
+    const timeout = window.setTimeout(() => setAgentPanelVisible(true), 24)
+    return () => window.clearTimeout(timeout)
+  }, [activeAgent])
+
+  const activeAgentDetails = AGENT_DETAILS[activeAgent]
 
   return (
     <div className="min-h-screen w-full bg-[#1a1322] text-[#f4eff7]">
@@ -177,18 +218,26 @@ export function LandingPage() {
 
               <div className="absolute inset-x-0 top-[61%] z-10 -translate-y-1/2">
                 <div className="mx-auto w-[96%]">
-                  <img
-                    src="/svg/gang.svg"
-                    alt="PEEK, POKE, and PATCH agents"
-                    className="h-auto w-full object-contain"
-                    loading="lazy"
-                  />
-                  <div className="mt-3 grid grid-cols-3 gap-x-0 text-center">
-                    {AGENT_LABELS.map((label) => (
-                      <p key={label} className="text-[18px] tracking-[0.14em] text-[#f6f1f8] lg:text-[20px]">
-                        {label}
-                      </p>
-                    ))}
+                  <div className="relative">
+                    <img
+                      src="/svg/gang.svg"
+                      alt="PEEK, POKE, and PATCH agents"
+                      className="h-auto w-full object-contain"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 grid grid-cols-3">
+                      {AGENT_ITEMS.map((agent) => (
+                        <button
+                          key={agent.id}
+                          type="button"
+                          aria-label={`Show details for ${agent.label}`}
+                          onMouseEnter={() => setActiveAgent(agent.id)}
+                          onFocus={() => setActiveAgent(agent.id)}
+                          onClick={() => setActiveAgent(agent.id)}
+                          className="h-full w-full bg-transparent"
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -200,18 +249,43 @@ export function LandingPage() {
               Meet your agents
             </h2>
             <div className="mt-4">
-              <img
-                src="/svg/gang.svg"
-                alt="PEEK, POKE, and PATCH agents"
-                className="mx-auto h-auto w-full max-w-[540px] object-contain"
-                loading="lazy"
-              />
-              <div className="mt-4 grid grid-cols-3 gap-x-0 text-center">
-                {AGENT_LABELS.map((label) => (
-                  <p key={label} className="text-[20px] tracking-[0.14em] text-[#f6f1f8]">
-                    {label}
-                  </p>
-                ))}
+              <div className="relative mx-auto w-full max-w-[540px]">
+                <img
+                  src="/svg/gang.svg"
+                  alt="PEEK, POKE, and PATCH agents"
+                  className="mx-auto h-auto w-full object-contain"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 grid grid-cols-3">
+                  {AGENT_ITEMS.map((agent) => (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      aria-label={`Show details for ${agent.label}`}
+                      onClick={() => setActiveAgent(agent.id)}
+                      className="h-full w-full bg-transparent"
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mx-auto mt-9 w-full max-w-[860px] px-1 md:mt-10">
+            <div className="rounded-[6px] border border-[#848188]/70 bg-[#21192b] px-6 py-6 md:px-7 md:py-7">
+              <div className={`transition-opacity duration-200 ${agentPanelVisible ? 'opacity-100' : 'opacity-0'}`}>
+                <p className="text-[13px] tracking-[0.14em] text-[#a9a0b6]">
+                  {activeAgentDetails.label}
+                </p>
+                <h3 className="mt-2 text-[22px] leading-tight text-[#f4eff7] md:text-[24px]">
+                  {activeAgentDetails.title}
+                </h3>
+                <p className="mt-3 text-[17px] leading-[1.6] text-[#d0c8da] md:text-[18px]">
+                  {activeAgentDetails.body}
+                </p>
+                <p className="mt-4 text-[13px] tracking-[0.08em] text-[#aaa1b7]">
+                  Outputs: {activeAgentDetails.outputs}
+                </p>
               </div>
             </div>
           </div>
