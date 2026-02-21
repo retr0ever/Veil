@@ -9,6 +9,30 @@
 }
 
 @font-face {
+  font-family: 'Source Serif Pro';
+  src: url('/fonts/source-serif-pro/SourceSerifPro-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Source Serif Pro';
+  src: url('/fonts/source-serif-pro/SourceSerifPro-Semibold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Source Serif Pro';
+  src: url('/fonts/source-serif-pro/SourceSerifPro-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: 'ITC Benguiat Std';
   src: url('/fonts/itc-benguiat-std/ITCBenguiatStdBookCn.OTF') format('opentype');
   font-weight: 400;
@@ -44,18 +68,14 @@
 
   /* ── Surfaces & backgrounds ── */
   --color-bg: #1a1322;
-  --color-surface: #151022;
-  --color-surface-2: #1e1730;
-  --color-border: #352d40;
-
-  /* ── Text ── */
-  --color-text: #f4eff7;
-  --color-muted: #9387a0;
-  --color-dim: #cbc4d2;
-
-  /* ── Fonts ── */
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  --color-surface: #10141f;
+  --color-surface-2: #171c2b;
+  --color-border: #242b3b;
+  --color-text: #f2f6ff;
+  --color-muted: #8390aa;
+  --color-dim: #a8b0c3;
+  --font-sans: 'Source Serif Pro', 'Times New Roman', serif;
+  --font-mono: 'Source Serif Pro', 'Times New Roman', serif;
 }
 
 * {
@@ -122,7 +142,7 @@ a {
 }
 
 .font-hero {
-  font-family: 'Heartland Script', 'ITC New Baskerville Roman', serif;
+  font-family: 'Heartland Script', 'Source Serif Pro', serif;
   font-style: normal;
   font-weight: 400;
 }

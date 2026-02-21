@@ -1,11 +1,37 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 
-const agents = [
-  { id: 'peek', label: 'PEEK', src: '/svg/2.png', shiftClass: 'translate-y-0' },
-  { id: 'poke', label: 'POKE', src: '/svg/3.png', shiftClass: 'translate-y-[2px]' },
-  { id: 'patch', label: 'PATCH', src: '/svg/4.png', shiftClass: 'translate-y-[4px]' },
+const AGENT_ITEMS = [
+  { id: 'peek', label: 'PEEK' },
+  { id: 'poke', label: 'POKE' },
+  { id: 'patch', label: 'PATCH' },
 ]
+
+const AGENT_DETAILS = {
+  all: {
+    heading: 'Three agents. One goal.',
+    body: 'Peek discovers new attack techniques, Poke stress-tests Veil with variants, and Patch updates the rules - then verifies the fix by replaying the bypass.',
+  },
+  peek: {
+    heading: 'PEEK: Threat Discovery',
+    body: 'Continuously collects emerging attack techniques and patterns, labels them by category and severity, and stores them in the threat intelligence database with sources.',
+  },
+  poke: {
+    heading: 'POKE: Red Team',
+    body: 'Generates attack variations and fires them at Veil’s own classifier. Logs what gets blocked vs. what slips through, and escalates any bypass as a report for patching.',
+  },
+  patch: {
+    heading: 'PATCH: Adaptation',
+    body: 'Analyzes why a bypass worked, updates the detection prompts/rules, redeploys immediately, and verifies the fix by re-running the exact same attack until it’s blocked.',
+  },
+}
+
+const AGENT_BORDER_COLORS = {
+  all: 'rgba(132, 129, 136, 0.7)',
+  peek: '#F4B6EB',
+  poke: '#B9A1F4',
+  patch: '#F6C371',
+}
 
 const HOW_IT_WORKS_STEPS = [
   {
@@ -42,7 +68,7 @@ export function LandingPage() {
   return (
     <div className="min-h-screen w-full bg-[#1a1322] text-[#f4eff7]">
       <div className="flex min-h-screen w-full flex-col px-6 pb-16 md:px-12">
-        <section className="relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
+        <section className="order-1 relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
           <div
             className="pointer-events-none absolute inset-0"
             style={{
@@ -61,6 +87,16 @@ export function LandingPage() {
                   Drop-in reverse proxy that blocks malicious requests before they reach your backend.
                   When something bypasses, Veil red-teams itself and auto-patches its detection rules, then verifies the fix by replay.
                 </p>
+                <div className="mt-5 flex items-center gap-0" aria-hidden="true">
+                  {[0, 1, 2].map((index) => (
+                    <img
+                      key={index}
+                      src="/svg/gang.png"
+                      alt=""
+                      className="h-auto w-[132px] object-contain md:w-[156px]"
+                    />
+                  ))}
+                </div>
               </div>
 
               <div className="w-full md:w-[470px] md:shrink-0">
@@ -86,7 +122,7 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
+        <section className="order-2 relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
           <div
             className="pointer-events-none absolute inset-0"
             style={{
@@ -132,9 +168,8 @@ export function LandingPage() {
 
               <div className="flex w-full justify-center md:self-center">
                 <div className="w-full max-w-[820px] rounded-[12px] border border-[#6d6872]/70 bg-[#151022] p-5 md:p-6">
-                <div className="mb-5 flex items-center justify-between border-b border-[#6d6872]/55 pb-3 text-[13px] tracking-[0.16em] text-[#b5acbf]">
+                <div className="mb-5 flex items-center justify-between border-b border-[#6d6872]/55 pb-3 text-[15px] tracking-[0.16em] text-[#b5acbf] md:text-[16px]">
                   <span>VEIL / HOW IT WORKS</span>
-                  <span>LIVE</span>
                 </div>
 
                 <div className="relative min-h-[420px] md:min-h-[460px]">
@@ -155,7 +190,10 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="mt-12 w-[calc(100%+3rem)] -mx-6 md:mt-10 md:w-[calc(100%+6rem)] md:-mx-12">
+        <section
+          className="order-3 relative mt-12 w-[calc(100%+3rem)] -mx-6 bg-[#1a1322] bg-cover bg-center bg-no-repeat md:mt-10 md:w-[calc(100%+6rem)] md:-mx-12"
+          style={{ backgroundImage: "url('/images/rays.png')" }}
+        >
           <div className="h-px w-full bg-[#848188]/70" />
           <div className="px-6 md:px-12">
           <div className="mx-auto hidden w-[clamp(520px,50vw,960px)] sm:block">
@@ -180,20 +218,47 @@ export function LandingPage() {
               </div>
 
               <div className="absolute inset-x-0 top-[61%] z-10 -translate-y-1/2">
-                <div className="grid grid-cols-3 items-end justify-items-center gap-x-2">
-                  {agents.map((agent) => (
-                    <article key={agent.id} className="flex flex-col items-center">
-                      <img
-                        src={agent.src}
-                        alt={agent.label}
-                        className={`h-[170px] w-[170px] object-contain lg:h-[190px] lg:w-[190px] ${agent.shiftClass}`}
-                        loading="lazy"
-                      />
-                      <p className="mt-4 text-[18px] tracking-[0.14em] text-[#f6f1f8] lg:text-[20px]">
-                        {agent.label}
-                      </p>
-                    </article>
-                  ))}
+                <div className="mx-auto w-[96%]">
+                  <div className="relative">
+                    <img
+                      src="/svg/gang.svg"
+                      alt="PEEK, POKE, and PATCH agents"
+                      className="h-auto w-full object-contain"
+                      loading="lazy"
+                    />
+                    <div
+                      className="absolute left-[8%] right-[8%] top-[34%] grid h-[38%] grid-cols-3"
+                      onMouseLeave={() => setActiveAgent('all')}
+                    >
+                      {AGENT_ITEMS.map((agent) => (
+                        <button
+                          key={agent.id}
+                          type="button"
+                          aria-label={`Show details for ${agent.label}`}
+                          onMouseEnter={() => setActiveAgent(agent.id)}
+                          onFocus={() => setActiveAgent(agent.id)}
+                          onClick={() => setActiveAgent(agent.id)}
+                          className="h-full w-full bg-transparent"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="absolute inset-x-[6%] top-[82%] z-0">
+                <div
+                  className="rounded-[6px] border bg-[#21192b] px-6 py-6 transition-colors duration-200 md:px-7 md:py-7"
+                  style={{ borderColor: activeAgentBorderColor }}
+                >
+                  <div className={`transition-opacity duration-200 ${agentPanelVisible ? 'opacity-100' : 'opacity-0'}`}>
+                    <h3 className={`text-[22px] leading-tight text-[#f4eff7] md:text-[24px] ${activeAgent === 'all' ? 'text-center' : 'text-left'}`}>
+                      {activeAgentDetails.heading}
+                    </h3>
+                    <p className="mt-3 text-[19px] leading-[1.6] text-[#d0c8da] md:text-[20px]">
+                      {activeAgentDetails.body}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -203,25 +268,66 @@ export function LandingPage() {
             <h2 className="font-hero text-center text-[56px] leading-none text-[#F4B6EB]">
               Meet your agents
             </h2>
-            <div className="mt-4 grid w-full grid-cols-1 items-end justify-items-center gap-y-8">
-              {agents.map((agent) => (
-                <article key={agent.id} className="flex flex-col items-center">
-                  <img
-                    src={agent.src}
-                    alt={agent.label}
-                    className={`h-[220px] w-[220px] object-contain ${agent.shiftClass}`}
-                    loading="lazy"
-                  />
-                  <p className="mt-5 text-[20px] tracking-[0.14em] text-[#f6f1f8]">
-                    {agent.label}
+            <div className="mt-4">
+              <div className="relative mx-auto w-full max-w-[540px]">
+                <img
+                  src="/svg/gang.svg"
+                  alt="PEEK, POKE, and PATCH agents"
+                  className="mx-auto h-auto w-full object-contain"
+                  loading="lazy"
+                />
+                <div className="absolute left-[8%] right-[8%] top-[34%] grid h-[38%] grid-cols-3">
+                  {AGENT_ITEMS.map((agent) => (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      aria-label={`Show details for ${agent.label}`}
+                      onClick={() => setActiveAgent(agent.id)}
+                      className="h-full w-full bg-transparent"
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+              <div className="mx-auto mt-6 w-full max-w-[860px] px-1">
+              <div
+                className="rounded-[6px] border bg-[#21192b] px-6 py-6 transition-colors duration-200"
+                style={{ borderColor: activeAgentBorderColor }}
+              >
+                <div className={`transition-opacity duration-200 ${agentPanelVisible ? 'opacity-100' : 'opacity-0'}`}>
+                  <h3 className={`text-[22px] leading-tight text-[#f4eff7] ${activeAgent === 'all' ? 'text-center' : 'text-left'}`}>
+                    {activeAgentDetails.heading}
+                  </h3>
+                  <p className="mt-3 text-[19px] leading-[1.6] text-[#d0c8da]">
+                    {activeAgentDetails.body}
                   </p>
-                </article>
-              ))}
+                </div>
+              </div>
             </div>
           </div>
           </div>
           <div className="mt-10 h-px w-full bg-[#848188]/70 md:mt-12" />
         </section>
+
+        <footer className="order-4 w-[calc(100%+3rem)] -mx-6 border-t border-[#848188]/60 bg-[#1a1322] opacity-50 md:w-[calc(100%+6rem)] md:-mx-12">
+          <div className="grid grid-cols-1 items-center gap-7 px-6 py-10 text-center md:grid-cols-[1fr_auto_1fr] md:px-12">
+            <div className="hidden md:block" />
+
+            <nav className="order-2 flex flex-wrap items-center justify-center gap-x-7 gap-y-3 text-center text-[14px] tracking-[0.12em] text-[#cec6d7] md:text-[15px]">
+              <a href="/terms" className="transition-opacity hover:opacity-80">TERMS &amp; CONDITIONS</a>
+              <a href="/privacy" className="transition-opacity hover:opacity-80">PRIVACY POLICY</a>
+              <a href="/security" className="transition-opacity hover:opacity-80">SECURITY</a>
+              <a href="/auth" className="transition-opacity hover:opacity-80">SIGN IN</a>
+            </nav>
+
+            <a
+              href="/"
+              className="order-1 justify-self-center font-logo font-logo-main text-[44px] leading-none text-[#f6f1f9]/50 md:order-3 md:justify-self-end md:text-[56px]"
+            >
+              VEIL.
+            </a>
+          </div>
+        </footer>
       </div>
     </div>
   )
@@ -231,8 +337,8 @@ function HowItWorksPreview({ index }) {
   if (index === 0) {
     return (
       <div className="space-y-6">
-        <p className="text-[15px] tracking-[0.16em] text-[#b9b0c5]">PROTECTED URL: https://veil.sh/p/site_47a8</p>
-        <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4 text-center text-[16px]">
+        <p className="text-[20px] tracking-[0.16em] text-[#c3bbce] md:text-[22px]">PROTECTED URL: https://veil.sh/p/site_47a8</p>
+        <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4 text-center text-[24px]">
           <Node label="Client" />
           <Arrow />
           <Node label="VEIL" />
@@ -246,7 +352,7 @@ function HowItWorksPreview({ index }) {
   if (index === 1) {
     return (
       <div className="space-y-5">
-        <p className="text-[16px] text-[#cfc7d9]">Classification</p>
+        <p className="text-[21px] text-[#d5cede]">Classification</p>
         <ClassRow label="SAFE" pct={86} color="#8fd9a7" />
         <ClassRow label="SUSPICIOUS" pct={47} color="#f2c77a" />
         <ClassRow label="MALICIOUS" pct={64} color="#f09ca8" />
@@ -257,10 +363,10 @@ function HowItWorksPreview({ index }) {
   if (index === 2) {
     return (
       <div className="rounded-[10px] border border-[#7a7385] bg-[#120d1e] p-5">
-        <p className="text-[14px] tracking-[0.12em] text-[#d6cfde]">FINAL VERDICT</p>
-        <p className="mt-2 text-[30px] font-semibold text-[#f08a95]">MALICIOUS</p>
-        <p className="mt-1 text-[20px] text-[#f2cf90]">SQLi (High)</p>
-        <p className="mt-4 text-[18px] leading-[1.45] text-[#b8aec4]">
+        <p className="text-[18px] tracking-[0.12em] text-[#d6cfde]">FINAL VERDICT</p>
+        <p className="mt-2 text-[40px] font-semibold text-[#f08a95]">MALICIOUS</p>
+        <p className="mt-1 text-[26px] text-[#f2cf90]">SQLi (High)</p>
+        <p className="mt-4 text-[23px] leading-[1.45] text-[#b8aec4]">
           Pattern matched boolean-based injection payload in query parameter `id`.
         </p>
       </div>
@@ -270,17 +376,17 @@ function HowItWorksPreview({ index }) {
   if (index === 3) {
     return (
       <div className="overflow-hidden rounded-[10px] border border-[#6f687c]">
-        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c] bg-[#1a1527] px-4 py-3 text-[14px] tracking-[0.12em] text-[#aaa1b7]">
+        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c] bg-[#1a1527] px-4 py-3 text-[18px] tracking-[0.12em] text-[#aaa1b7]">
           <span>STATUS</span>
           <span>REQUEST</span>
           <span>ACTION</span>
         </div>
-        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c]/60 bg-[#261420] px-4 py-3 text-[17px]">
+        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c]/60 bg-[#261420] px-4 py-3 text-[22px]">
           <span className="text-[#f08a95]">BLOCK</span>
           <span className="text-[#d0c8db]">GET /users?id=' OR 1=1</span>
           <span className="text-[#f08a95]">403</span>
         </div>
-        <div className="grid grid-cols-[150px_1fr_130px] bg-[#12211b] px-4 py-3 text-[17px]">
+        <div className="grid grid-cols-[150px_1fr_130px] bg-[#12211b] px-4 py-3 text-[22px]">
           <span className="text-[#8fd9a7]">FORWARD</span>
           <span className="text-[#d0c8db]">GET /products?page=2</span>
           <span className="text-[#8fd9a7]">200</span>
@@ -307,17 +413,17 @@ function Node({ label }) {
 }
 
 function Arrow() {
-  return <span className="text-[18px] text-[#8f86a2]">-&gt;</span>
+  return <span className="text-[30px] text-[#8f86a2]">-&gt;</span>
 }
 
 function ClassRow({ label, pct, color }) {
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between text-[15px]">
+      <div className="mb-2 flex items-center justify-between text-[21px]">
         <span className="text-[#ddd5e6]">{label}</span>
         <span className="text-[#a79cb5]">{pct}%</span>
       </div>
-      <div className="h-3 overflow-hidden rounded-[5px] bg-[#241c31]">
+      <div className="h-4 overflow-hidden rounded-[5px] bg-[#241c31]">
         <div className="h-full" style={{ width: `${pct}%`, background: color }} />
       </div>
     </div>
@@ -326,7 +432,7 @@ function ClassRow({ label, pct, color }) {
 
 function TimelineItem({ text, color }) {
   return (
-    <div className="flex items-center gap-4 rounded-[8px] border border-[#6f687c] bg-[#1a1527] px-5 py-4 text-[17px] text-[#d8d0e2]">
+    <div className="flex items-center gap-4 rounded-[8px] border border-[#6f687c] bg-[#1a1527] px-5 py-4 text-[22px] text-[#d8d0e2]">
       <span className="h-3 w-3 rounded-full" style={{ background: color }} />
       <span>{text}</span>
     </div>
