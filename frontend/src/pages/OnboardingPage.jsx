@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { setProjectName } from '../lib/projectNames'
 import { AppShell, LoadingSpinner } from '../components/AppShell'
 import { APP_SIDEBAR_LINKS } from '../lib/navLinks'
+import { getBaseUrl, proxyUrl as buildProxyUrl } from '../lib/baseUrl'
 
 function normalizeUrl(raw) {
   const value = raw.trim()
@@ -64,7 +65,14 @@ export function OnboardingPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState(null)
+  const [protectedUrl, setProtectedUrl] = useState('')
   const urlInputRef = useRef(null)
+
+  useEffect(() => {
+    if (created) {
+      getBaseUrl().then(() => setProtectedUrl(buildProxyUrl(created.site_id)))
+    }
+  }, [created])
 
   if (authLoading) {
     return (
@@ -116,7 +124,6 @@ export function OnboardingPage() {
     setSubmitting(false)
   }
 
-  const protectedUrl = created ? `${window.location.origin}/p/${created.site_id}` : ''
 
   return (
     <AppShell links={APP_SIDEBAR_LINKS} activeKey="new" user={user} logout={logout} pageTitle="New Project">

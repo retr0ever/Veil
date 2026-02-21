@@ -3,9 +3,10 @@ import { useAuth } from '../hooks/useAuth'
 import { getProjectNames } from '../lib/projectNames'
 import { AppShell, LoadingSpinner } from '../components/AppShell'
 import { APP_SIDEBAR_LINKS } from '../lib/navLinks'
+import { getBaseUrl, proxyUrl as buildProxyUrl } from '../lib/baseUrl'
 
 function ProjectCard({ site, projectName }) {
-  const proxyUrl = `${window.location.origin}/p/${site.site_id}`
+  const proxyUrl = buildProxyUrl(site.site_id)
 
   return (
     <a
@@ -127,6 +128,7 @@ export function ProjectsPage() {
 
     const load = async () => {
       try {
+        await getBaseUrl()
         const res = await fetch('/api/sites')
         if (!res.ok) throw new Error('Failed to load projects')
         const data = await res.json()
