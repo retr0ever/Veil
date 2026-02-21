@@ -10,7 +10,7 @@ const agents = [
 export function LandingPage() {
   return (
     <div className="min-h-screen w-full bg-[#1a1322] text-[#f4eff7]">
-      <div className="flex min-h-screen w-full flex-col px-6 pb-16 pt-6 md:px-12 md:pt-8">
+      <div className="flex min-h-screen w-full flex-col px-6 pb-16 pt-10 md:px-12 md:pt-8">
         <NavBar
           links={PUBLIC_NAV_LINKS}
           activeHref="/"
@@ -24,7 +24,7 @@ export function LandingPage() {
             className="pointer-events-none absolute inset-0"
             style={{
               background:
-                'radial-gradient(circle at top left, rgba(112,130,207,0.38) 0%, rgba(112,130,207,0.22) 15%, rgba(112,130,207,0.1) 28%, transparent 40%), radial-gradient(circle at bottom right, rgba(176,98,177,0.34) 0%, rgba(176,98,177,0.2) 14%, rgba(176,98,177,0.09) 28%, transparent 42%)',
+                'radial-gradient(circle at top left, rgba(112,130,207,0.38) 0%, rgba(112,130,207,0.22) 9%, rgba(112,130,207,0.1) 17%, transparent 24%), radial-gradient(circle at bottom right, rgba(176,98,177,0.34) 0%, rgba(176,98,177,0.2) 8%, rgba(176,98,177,0.09) 17%, transparent 25%)',
             }}
           />
 
@@ -43,20 +43,20 @@ export function LandingPage() {
               <div className="w-full md:w-[470px] md:shrink-0">
                 <a
                   href="/app/projects"
-                  className="block rounded-[12px] bg-[#f1b461] px-8 py-7 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                  className="block rounded-[12px] bg-[#f1b461] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
                   style={{ color: '#1a1322' }}
                 >
-                  <span className="block text-[34px] leading-[0.9] tracking-[0.06em] !text-[#1a1322] md:text-[38px]">OPEN</span>
-                  <span className="mt-1 block text-[34px] leading-[0.9] tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROJECTS</span>
+                  <span className="font-logo block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">OPEN</span>
+                  <span className="font-logo mt-0.5 block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROJECTS</span>
                 </a>
 
                 <a
                   href="/app/onboarding"
-                  className="mt-5 block rounded-[12px] bg-[#f0a9e6] px-8 py-7 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                  className="mt-2.5 block rounded-[12px] bg-[#f0a9e6] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
                   style={{ color: '#1a1322' }}
                 >
-                  <span className="block text-[34px] leading-[0.9] tracking-[0.06em] !text-[#1a1322] md:text-[38px]">START</span>
-                  <span className="mt-1 block text-[34px] leading-[0.9] tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROTECTING</span>
+                  <span className="font-logo block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">START</span>
+                  <span className="font-logo mt-0.5 block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROTECTING</span>
                 </a>
               </div>
             </div>
