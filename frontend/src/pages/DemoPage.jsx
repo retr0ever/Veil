@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useVeilSocket } from '../hooks/useVeilSocket'
 import { StatsBar } from '../components/StatsBar'
 import { RequestFeed } from '../components/RequestFeed'
-import { humaniseAttackType } from '../lib/humanise'
 
 const testScenarios = [
   {
@@ -62,35 +61,35 @@ export function DemoPage() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <main className="mx-auto max-w-7xl px-5 pb-6 pt-0">
-        <section className="mb-4 rounded-2xl border border-border bg-surface p-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Try Veil</h1>
-          <p className="mt-2 text-[14px] text-dim">
+      <main className="mx-auto max-w-7xl px-6 pb-8 pt-6">
+        <section className="mb-6 rounded-2xl border border-border bg-surface p-8">
+          <h1 className="text-[32px] font-semibold tracking-tight">Try Veil</h1>
+          <p className="mt-3 text-[18px] text-dim">
             Run simulated attack payloads against Veil's detection engine and see how they are classified in real time.
           </p>
 
           <button
             onClick={runAllTests}
             disabled={running}
-            className="mt-4 rounded-lg bg-text px-5 py-2.5 text-[14px] font-medium text-bg disabled:opacity-50"
+            className="mt-5 rounded-lg bg-agent px-6 py-3 text-[18px] font-medium text-white transition-all disabled:opacity-50 hover:brightness-110"
           >
             {running ? 'Running tests...' : 'Run Simulated Tests'}
           </button>
 
           {results && (
-            <div className="mt-5">
-              <p className="text-[15px] font-semibold">
+            <div className="mt-6">
+              <p className="text-[20px] font-semibold">
                 <span className={blockedCount === results.length ? 'text-safe' : blockedCount > 0 ? 'text-suspicious' : 'text-blocked'}>
                   {blockedCount}/{results.length}
                 </span>
                 <span className="ml-2 text-dim font-normal">simulated attacks blocked</span>
               </p>
 
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 {results.map((r) => (
                   <div
                     key={r.id}
-                    className={`rounded-lg border p-4 ${
+                    className={`rounded-lg border p-5 ${
                       r.blocked
                         ? 'border-safe/40 bg-safe/5'
                         : 'border-blocked/40 bg-blocked/5'
@@ -106,21 +105,21 @@ export function DemoPage() {
                           <path d="M4.5 3L8 6.5 11.5 3 13 4.5 9.5 8 13 11.5 11.5 13 8 9.5 4.5 13 3 11.5 6.5 8 3 4.5z" fill="currentColor" />
                         </svg>
                       )}
-                      <span className={`text-[14px] font-medium ${r.blocked ? 'text-safe' : 'text-blocked'}`}>
+                      <span className={`text-[18px] font-medium ${r.blocked ? 'text-safe' : 'text-blocked'}`}>
                         {r.blocked ? 'Blocked' : 'Missed'}
                       </span>
                     </div>
-                    <p className="mt-2 text-[13px] text-dim">{r.label}</p>
+                    <p className="mt-2 text-[16px] text-dim">{r.label}</p>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          <div className="mt-6 border-t border-border pt-4">
+          <div className="mt-8 border-t border-border pt-5">
             <a
-              href="/app/onboarding"
-              className="inline-flex rounded-lg bg-text px-4 py-2 text-[14px] font-medium text-bg"
+              href="/auth"
+              className="inline-flex rounded-lg bg-agent px-5 py-2.5 text-[18px] font-medium text-white transition-all hover:brightness-110"
             >
               Protect your own site
             </a>

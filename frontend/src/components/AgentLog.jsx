@@ -59,26 +59,26 @@ function PipelineStage({ agent, event, isLast }) {
     <div className="flex items-start gap-3 flex-1 min-w-0">
       <div className="flex-1 min-w-0 rounded-lg border border-border bg-bg p-3">
         <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-[12px] font-semibold text-text">{STAGE_LABELS[agent]}: {role.name}</span>
+          <span className="text-[14px] font-semibold text-text">{STAGE_LABELS[agent]}: {role.name}</span>
           {agent === 'patch' && round && round > 1 && (
-            <span className="text-[10px] text-suspicious bg-suspicious/10 px-1.5 py-0.5 rounded">R{round}</span>
+            <span className="text-[12px] text-suspicious bg-suspicious/10 px-1.5 py-0.5 rounded">R{round}</span>
           )}
           {agent === 'poke' && isRepoke && (
-            <span className="text-[10px] text-agent bg-agent/10 px-1.5 py-0.5 rounded">verify</span>
+            <span className="text-[12px] text-agent bg-agent/10 px-1.5 py-0.5 rounded">verify</span>
           )}
         </div>
-        <p className="text-[11px] text-muted leading-relaxed">{role.verb}</p>
+        <p className="text-[13px] text-muted leading-relaxed">{role.verb}</p>
         <div className="mt-2 flex items-center gap-2">
           {statusIcon}
-          <span className={`text-[11px] font-medium ${
+          <span className={`text-[13px] font-medium ${
             status === 'running' ? 'text-agent' : status === 'done' ? (stillBypassing && parseInt(stillBypassing[1], 10) > 0 ? 'text-suspicious' : 'text-safe') : status === 'error' ? 'text-blocked' : 'text-muted'
           }`}>
             {statusLabel}
           </span>
-          {time && <span className="text-[10px] text-muted">{time}</span>}
+          {time && <span className="text-[12px] text-muted">{time}</span>}
         </div>
         {status === 'done' && summary && (
-          <p className="mt-1 text-[11px] text-dim truncate">{summary}</p>
+          <p className="mt-1 text-[13px] text-dim truncate">{summary}</p>
         )}
       </div>
       {!isLast && (
@@ -124,12 +124,12 @@ export function AgentPipeline({ events }) {
 export function AgentLog({ events }) {
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-border text-muted text-[12px] font-medium">
+      <div className="px-4 py-2.5 border-b border-border text-muted text-[14px] font-medium">
         Agent activity
       </div>
       <div className="flex-1 overflow-y-auto">
         {events.length === 0 && (
-          <div className="px-4 py-8 text-muted text-center text-[13px]">
+          <div className="px-4 py-8 text-muted text-center text-[15px]">
             Agents have not run yet. Start an improvement cycle to see activity.
           </div>
         )}
@@ -145,8 +145,8 @@ export function AgentLog({ events }) {
                   <svg width="12" height="12" viewBox="0 0 16 16" className="text-muted shrink-0">
                     <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm0 1.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM8 4v4.25l2.5 1.5-.75 1.25L7 8.75V4h1z" fill="currentColor" fillRule="evenodd" />
                   </svg>
-                  <span className={`text-[12px] ${color}`}>{summary}</span>
-                  <span className="shrink-0 text-[10px] text-muted ml-auto">{relativeTime(evt.timestamp)}</span>
+                  <span className={`text-[14px] ${color}`}>{summary}</span>
+                  <span className="shrink-0 text-[12px] text-muted ml-auto">{relativeTime(evt.timestamp)}</span>
                 </div>
               </div>
             )
@@ -170,12 +170,12 @@ export function AgentLog({ events }) {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className={`text-[13px] ${color}`}>{summary}</p>
+                <p className={`text-[15px] ${color}`}>{summary}</p>
                 {evt.detail && (
-                  <p className="mt-0.5 truncate text-[11px] text-muted">{evt.detail}</p>
+                  <p className="mt-0.5 truncate text-[13px] text-muted">{evt.detail}</p>
                 )}
               </div>
-              <span className="shrink-0 text-[11px] text-muted">{relativeTime(evt.timestamp)}</span>
+              <span className="shrink-0 text-[13px] text-muted">{relativeTime(evt.timestamp)}</span>
             </div>
           )
         })}

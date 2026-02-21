@@ -423,11 +423,16 @@ async def auth_me(request: Request):
     return user
 
 
-@app.post("/auth/logout")
+@app.get("/auth/logout")
 async def auth_logout():
-    """Clear session cookie."""
-    response = JSONResponse(content={"ok": True})
-    response.delete_cookie(SESSION_COOKIE, path="/")
+    """Clear session cookie and redirect to landing."""
+    response = RedirectResponse("/", status_code=302)
+    response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        httponly=True,
+        samesite="lax",
+    )
     return response
 
 

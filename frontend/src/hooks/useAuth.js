@@ -12,9 +12,8 @@ export function useAuth() {
       .finally(() => setLoading(false))
   }, [])
 
-  const logout = async () => {
-    await fetch('/auth/logout', { method: 'POST' })
-    window.location.href = '/'
+  const logout = () => {
+    window.location.href = '/auth/logout'
   }
 
   return { user, loading, logout }

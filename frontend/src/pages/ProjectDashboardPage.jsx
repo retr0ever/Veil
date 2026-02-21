@@ -1,12 +1,69 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { Dashboard } from '../components/Dashboard'
+import { AppShell, LoadingSpinner } from '../components/AppShell'
+import { PROJECT_SIDEBAR_LINKS } from '../lib/navLinks'
 import { getProjectName } from '../lib/projectNames'
+
+function sectionFromHash() {
+  const hash = window.location.hash.replace('#', '')
+  const valid = PROJECT_SIDEBAR_LINKS.map((l) => l.key)
+  return valid.includes(hash) ? hash : 'site'
+}
+
+function NotFoundState() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center px-4">
+      <div className="flex max-w-md flex-col items-center text-center">
+        {/* Icon */}
+        <div className="relative mb-5">
+          <div
+            className="absolute inset-0 rounded-full"
+            style={{
+              background: 'radial-gradient(circle, rgba(240,138,149,0.1) 0%, transparent 70%)',
+              transform: 'scale(2.5)',
+            }}
+          />
+          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-blocked/20 bg-blocked/5">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-blocked">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M15 9l-6 6M9 9l6 6" />
+            </svg>
+          </div>
+        </div>
+
+        <h2 className="text-[17px] font-semibold text-text">Project not found</h2>
+        <p className="mt-2 max-w-xs text-[13px] leading-relaxed text-dim">
+          This project may have been removed, or you might not have access to it. Check your project list or create a new one.
+        </p>
+
+        <div className="mt-5 flex items-center gap-3">
+          <a
+            href="/app/projects"
+            className="inline-flex items-center gap-2 rounded-lg bg-text px-4 py-2 text-[13px] font-semibold text-bg transition-opacity hover:opacity-90"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 3L5 8l5 5" />
+            </svg>
+            Back to projects
+          </a>
+          <a
+            href="/app/onboarding"
+            className="inline-flex rounded-lg border border-border px-4 py-2 text-[13px] font-medium text-muted transition-colors hover:border-dim hover:text-text"
+          >
+            New project
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function ProjectDashboardPage({ siteId }) {
   const { user, loading: authLoading, logout } = useAuth()
   const [site, setSite] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [activeSection, setActiveSection] = useState(sectionFromHash)
 
   useEffect(() => {
     if (authLoading) return
@@ -31,28 +88,68 @@ export function ProjectDashboardPage({ siteId }) {
     load()
   }, [siteId, user, authLoading])
 
+  // Listen for hash changes (browser back/forward)
+  useEffect(() => {
+    const onHashChange = () => {
+      setActiveSection(sectionFromHash())
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  const handleNavClick = useCallback((key) => {
+    setActiveSection(key)
+    window.location.hash = key === 'site' ? 'overview' : key
+  }, [])
+
+  // Auth loading or data loading
   if (authLoading || loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-bg text-muted">
-        Loading project...
-      </div>
+      <AppShell
+        links={PROJECT_SIDEBAR_LINKS}
+        activeKey={activeSection}
+        onNavClick={handleNavClick}
+        user={user}
+        logout={logout}
+      >
+        <LoadingSpinner label="Loading project..." />
+      </AppShell>
     )
   }
 
   if (!user) return null
 
+  // Project not found
   if (!site) {
     return (
-      <div className="flex h-screen items-center justify-center bg-bg px-4 text-text">
-        <div className="rounded-xl border border-border bg-surface p-6 text-center">
-          <p className="text-[16px]">Project not found.</p>
-          <a href="/app/projects" className="mt-3 inline-block text-[13px] text-agent hover:underline">
-            Return to projects
-          </a>
-        </div>
-      </div>
+      <AppShell
+        links={PROJECT_SIDEBAR_LINKS}
+        activeKey={activeSection}
+        onNavClick={handleNavClick}
+        user={user}
+        logout={logout}
+      >
+        <NotFoundState />
+      </AppShell>
     )
   }
 
-  return <Dashboard site={site} projectName={getProjectName(siteId)} user={user} logout={logout} />
+  const projectName = getProjectName(siteId)
+  const currentLink = PROJECT_SIDEBAR_LINKS.find((l) => l.key === activeSection)
+  const pageTitle = currentLink?.label || 'Overview'
+
+  return (
+    <AppShell
+      links={PROJECT_SIDEBAR_LINKS}
+      activeKey={activeSection}
+      onNavClick={handleNavClick}
+      user={user}
+      logout={logout}
+      projectTitle={projectName || site.target_url}
+      projectUrl={site.target_url}
+      pageTitle={pageTitle}
+    >
+      <Dashboard site={site} activeSection={activeSection} />
+    </AppShell>
+  )
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuth } from '../hooks/useAuth'
 
 const agents = [
   { id: 'peek', label: 'PEEK', src: '/svg/2.png', shiftClass: 'translate-y-0' },
@@ -36,6 +37,7 @@ const HOW_IT_WORKS_STEPS = [
 
 export function LandingPage() {
   const [activeHowItWorks, setActiveHowItWorks] = useState(0)
+  const { user, loading } = useAuth()
 
   return (
     <div className="min-h-screen w-full bg-[#1a1322] text-[#f4eff7]">
@@ -63,7 +65,7 @@ export function LandingPage() {
 
               <div className="w-full md:w-[470px] md:shrink-0">
                 <a
-                  href="/app/projects"
+                  href={!loading && user ? '/app/projects' : '/auth'}
                   className="block rounded-[12px] bg-[#f1b461] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
                   style={{ color: '#1a1322' }}
                 >
@@ -72,7 +74,7 @@ export function LandingPage() {
                 </a>
 
                 <a
-                  href="/app/onboarding"
+                  href={!loading && user ? '/app/onboarding' : '/auth'}
                   className="mt-2.5 block rounded-[12px] bg-[#f0a9e6] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
                   style={{ color: '#1a1322' }}
                 >
