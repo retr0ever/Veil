@@ -11,15 +11,17 @@ VEIL_PROXY_URL = os.getenv("VEIL_PROXY_URL", "http://localhost:8000")
 
 async def run():
     """Run the Poke red team agent. Attacks Veil's own classifier with known techniques."""
-    db = await get_db()
     bypasses = []
     tested = 0
 
     # Get all untested or previously bypassing techniques
-    cursor = await db.execute(
-        "SELECT id, technique_name, raw_payload, category, severity FROM threats WHERE blocked = 0 OR tested_at IS NULL"
-    )
-    techniques = await cursor.fetchall()
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id, technique_name, raw_payload, category, severity FROM threats WHERE blocked = 0 OR tested_at IS NULL"
+        )
+        techniques = await cursor.fetchall()
+        # Copy results so we can close the connection
+        techniques = [tuple(row) for row in techniques]
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         for tech in techniques:
@@ -38,10 +40,12 @@ async def run():
                     was_blocked = result.get("blocked", False)
 
                     # Update threat record
-                    await db.execute(
-                        "UPDATE threats SET tested_at = ?, blocked = ? WHERE id = ?",
-                        (datetime.utcnow().isoformat(), 1 if was_blocked else 0, tech_id),
-                    )
+                    async with get_db() as db:
+                        await db.execute(
+                            "UPDATE threats SET tested_at = ?, blocked = ? WHERE id = ?",
+                            (datetime.utcnow().isoformat(), 1 if was_blocked else 0, tech_id),
+                        )
+                        await db.commit()
 
                     if not was_blocked:
                         bypasses.append({
@@ -54,25 +58,25 @@ async def run():
                         })
 
             except Exception as e:
-                await db.execute(
-                    "INSERT INTO agent_log (timestamp, agent, action, detail, success) VALUES (?, ?, ?, ?, ?)",
-                    (datetime.utcnow().isoformat(), "poke", "error", f"Failed to test {name}: {str(e)}", 0),
-                )
-
-    await db.commit()
+                async with get_db() as db:
+                    await db.execute(
+                        "INSERT INTO agent_log (timestamp, agent, action, detail, success) VALUES (?, ?, ?, ?, ?)",
+                        (datetime.utcnow().isoformat(), "poke", "error", f"Failed to test {name}: {str(e)}", 0),
+                    )
+                    await db.commit()
 
     # Log results
-    await db.execute(
-        "INSERT INTO agent_log (timestamp, agent, action, detail, success) VALUES (?, ?, ?, ?, ?)",
-        (
-            datetime.utcnow().isoformat(),
-            "poke",
-            "red_team",
-            f"Tested {tested} techniques, found {len(bypasses)} bypasses",
-            1,
-        ),
-    )
-    await db.commit()
-    await db.close()
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO agent_log (timestamp, agent, action, detail, success) VALUES (?, ?, ?, ?, ?)",
+            (
+                datetime.utcnow().isoformat(),
+                "poke",
+                "red_team",
+                f"Tested {tested} techniques, found {len(bypasses)} bypasses",
+                1,
+            ),
+        )
+        await db.commit()
 
     return bypasses

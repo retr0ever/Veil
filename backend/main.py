@@ -17,7 +17,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from pydantic import BaseModel
 
 from .db.database import get_db, init_db
-from .services import crusoe_classifier, claude_classifier
+from .services import crusoe_classifier, claude_classifier, regex_classifier
 from .agents import peek, poke, patch
 
 load_dotenv()
@@ -289,25 +289,52 @@ async def get_stats_data():
 
 
 async def classify_request(raw_request: str):
-    """Run the two-stage classification on a raw HTTP request string."""
+    """Run classification on a raw HTTP request string.
+
+    Pipeline:
+    1. Regex classifier runs first (instant, no API needed)
+    2. If API keys are configured, LLM classifiers refine the result
+    3. Blocked if any stage says MALICIOUS with confidence > 0.6
+    """
     rules = await get_current_rules()
     if not rules:
         return {"classification": "SUSPICIOUS", "confidence": 0.5, "blocked": False, "attack_type": "none", "classifier": "none", "reason": "No rules loaded"}
 
-    # Stage 1: Crusoe fast check
-    crusoe_result = await crusoe_classifier.classify(raw_request, rules["crusoe_prompt"])
-    classification = crusoe_result.get("classification", "SUSPICIOUS")
-    confidence = crusoe_result.get("confidence", 0.5)
-
+    # Stage 0: Regex classifier (always runs, instant)
+    regex_result = await regex_classifier.classify(raw_request)
+    classification = regex_result.get("classification", "SAFE")
+    confidence = regex_result.get("confidence", 0.5)
+    final_result = regex_result
     blocked = False
-    final_result = crusoe_result
 
-    # Stage 2: If suspicious/malicious, escalate to Claude
-    if classification in ("SUSPICIOUS", "MALICIOUS"):
+    crusoe_key = os.getenv("CRUSOE_API_KEY", "")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    has_crusoe = crusoe_key and crusoe_key != "placeholder"
+    has_claude = anthropic_key and anthropic_key != "placeholder"
+
+    # Stage 1: Crusoe fast check (only if API key is real)
+    if has_crusoe:
+        crusoe_result = await crusoe_classifier.classify(raw_request, rules["crusoe_prompt"])
+        crusoe_class = crusoe_result.get("classification", "SUSPICIOUS")
+        # If regex said MALICIOUS, keep that. If Crusoe escalates, use that.
+        if crusoe_class == "MALICIOUS" or (crusoe_class == "SUSPICIOUS" and classification != "MALICIOUS"):
+            classification = crusoe_class
+            final_result = crusoe_result
+            confidence = crusoe_result.get("confidence", 0.5)
+
+    # Stage 2: Claude deep analysis (only if API key is real and something looks suspicious)
+    if has_claude and classification in ("SUSPICIOUS", "MALICIOUS"):
         claude_result = await claude_classifier.classify(raw_request, rules["claude_prompt"])
-        final_result = claude_result
-        classification = claude_result.get("classification", "SUSPICIOUS")
-        confidence = claude_result.get("confidence", 0.5)
+        claude_class = claude_result.get("classification", "SUSPICIOUS")
+        if claude_class == "MALICIOUS":
+            classification = claude_class
+            final_result = claude_result
+            confidence = claude_result.get("confidence", 0.5)
+        elif claude_class == "SAFE" and regex_result.get("classification") != "MALICIOUS":
+            # Claude overrides Crusoe's SUSPICIOUS to SAFE (but not regex MALICIOUS)
+            classification = "SAFE"
+            final_result = claude_result
+            confidence = claude_result.get("confidence", 0.5)
 
     if classification == "MALICIOUS" and confidence > 0.6:
         blocked = True
@@ -610,6 +637,40 @@ async def trigger_full_cycle():
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws_manager.connect(ws)
+
+    # Hydrate: send current stats + recent requests + recent agent events
+    try:
+        stats = await get_stats_data()
+        await ws.send_json({"type": "stats", **stats})
+
+        async with get_db() as db:
+            cursor = await db.execute("SELECT * FROM request_log ORDER BY timestamp DESC LIMIT 20")
+            rows = await cursor.fetchall()
+        for r in reversed(rows):
+            await ws.send_json({
+                "type": "request",
+                "timestamp": r[1],
+                "message": r[2][:120],
+                "classification": r[3],
+                "confidence": r[4],
+                "blocked": bool(r[6]),
+                "classifier": r[5],
+                "attack_type": r[7] or "none",
+            })
+
+        async with get_db() as db:
+            cursor = await db.execute("SELECT * FROM agent_log ORDER BY timestamp DESC LIMIT 10")
+            rows = await cursor.fetchall()
+        for r in reversed(rows):
+            await ws.send_json({
+                "type": "agent",
+                "agent": r[2],
+                "status": "done" if r[5] else "error",
+                "detail": r[4] or "",
+            })
+    except Exception:
+        pass
+
     try:
         while True:
             await ws.receive_text()

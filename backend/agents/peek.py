@@ -129,37 +129,37 @@ async def run():
     """Run the Peek scout agent. Discovers and catalogues new web attack techniques."""
     added = 0
 
-    # Phase 1: Seed techniques (short DB transaction)
-    db = await get_db()
-    for tech in SEED_TECHNIQUES:
-        cursor = await db.execute(
-            "SELECT id FROM threats WHERE technique_name = ?",
-            (tech["technique_name"],),
-        )
-        if await cursor.fetchone() is None:
-            await db.execute(
-                """INSERT INTO threats (technique_name, category, source, raw_payload, severity, discovered_at)
-                VALUES (?, ?, ?, ?, ?, ?)""",
-                (
-                    tech["technique_name"],
-                    tech["category"],
-                    tech["source"],
-                    tech["raw_payload"],
-                    tech["severity"],
-                    datetime.utcnow().isoformat(),
-                ),
+    # Phase 1: Seed techniques
+    async with get_db() as db:
+        for tech in SEED_TECHNIQUES:
+            cursor = await db.execute(
+                "SELECT id FROM threats WHERE technique_name = ?",
+                (tech["technique_name"],),
             )
-            added += 1
-    await db.commit()
+            if await cursor.fetchone() is None:
+                await db.execute(
+                    """INSERT INTO threats (technique_name, category, source, raw_payload, severity, discovered_at)
+                    VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        tech["technique_name"],
+                        tech["category"],
+                        tech["source"],
+                        tech["raw_payload"],
+                        tech["severity"],
+                        datetime.utcnow().isoformat(),
+                    ),
+                )
+                added += 1
+        await db.commit()
 
     # Get known techniques for variation generation
-    cursor = await db.execute("SELECT technique_name, raw_payload, category FROM threats LIMIT 5")
-    known = await cursor.fetchall()
+    async with get_db() as db:
+        cursor = await db.execute("SELECT technique_name, raw_payload, category FROM threats LIMIT 5")
+        known = await cursor.fetchall()
     known_list = "\n".join([f"- {row[0]} ({row[2]}): {row[1][:150]}" for row in known]) if known else ""
-    await db.close()
 
     # Phase 2: Generate novel variations via Claude (DB closed during API call)
-    if known_list and ANTHROPIC_API_KEY:
+    if known_list and ANTHROPIC_API_KEY and ANTHROPIC_API_KEY != "placeholder":
         try:
             client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
             response = await client.messages.create(
@@ -186,45 +186,43 @@ Focus on evasion techniques: encoding tricks, case manipulation, comment inserti
             if start_idx != -1 and end_idx > start_idx:
                 novel_techniques = json.loads(content[start_idx:end_idx])
 
-                # Phase 3: Store novel techniques (short DB transaction)
-                db = await get_db()
-                for tech in novel_techniques:
-                    cursor = await db.execute(
-                        "SELECT id FROM threats WHERE technique_name = ?",
-                        (tech.get("technique_name", ""),),
-                    )
-                    if await cursor.fetchone() is None:
-                        await db.execute(
-                            """INSERT INTO threats (technique_name, category, source, raw_payload, severity, discovered_at)
-                            VALUES (?, ?, ?, ?, ?, ?)""",
-                            (
-                                tech.get("technique_name", "Unknown"),
-                                tech.get("category", "sqli"),
-                                "peek/claude-generated",
-                                tech.get("raw_payload", ""),
-                                tech.get("severity", "medium"),
-                                datetime.utcnow().isoformat(),
-                            ),
+                # Phase 3: Store novel techniques
+                async with get_db() as db:
+                    for tech in novel_techniques:
+                        cursor = await db.execute(
+                            "SELECT id FROM threats WHERE technique_name = ?",
+                            (tech.get("technique_name", ""),),
                         )
-                        added += 1
-                await db.commit()
-                await db.close()
+                        if await cursor.fetchone() is None:
+                            await db.execute(
+                                """INSERT INTO threats (technique_name, category, source, raw_payload, severity, discovered_at)
+                                VALUES (?, ?, ?, ?, ?, ?)""",
+                                (
+                                    tech.get("technique_name", "Unknown"),
+                                    tech.get("category", "sqli"),
+                                    "peek/claude-generated",
+                                    tech.get("raw_payload", ""),
+                                    tech.get("severity", "medium"),
+                                    datetime.utcnow().isoformat(),
+                                ),
+                            )
+                            added += 1
+                    await db.commit()
 
         except Exception:
             pass
 
     # Log agent activity
-    db = await get_db()
-    await db.execute(
-        "INSERT INTO agent_log (timestamp, agent, action, detail, success) VALUES (?, ?, ?, ?, ?)",
-        (
-            datetime.utcnow().isoformat(),
-            "peek",
-            "scan",
-            f"Discovered {added} new attack techniques",
-            1,
-        ),
-    )
-    await db.commit()
-    await db.close()
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO agent_log (timestamp, agent, action, detail, success) VALUES (?, ?, ?, ?, ?)",
+            (
+                datetime.utcnow().isoformat(),
+                "peek",
+                "scan",
+                f"Discovered {added} new attack techniques",
+                1,
+            ),
+        )
+        await db.commit()
     return added
