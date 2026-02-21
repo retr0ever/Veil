@@ -2,8 +2,6 @@ import { useState } from 'react'
 import { useVeilSocket } from '../hooks/useVeilSocket'
 import { StatsBar } from '../components/StatsBar'
 import { RequestFeed } from '../components/RequestFeed'
-import { NavBar } from '../components/NavBar'
-import { PUBLIC_NAV_LINKS } from '../lib/navLinks'
 import { humaniseAttackType } from '../lib/humanise'
 
 const testScenarios = [
@@ -64,11 +62,7 @@ export function DemoPage() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <div className="mx-auto max-w-7xl px-5 pt-4">
-        <NavBar links={PUBLIC_NAV_LINKS} activeHref="/demo" size="default" showDivider />
-      </div>
-
-      <main className="mx-auto max-w-7xl px-5 pb-6 pt-5">
+      <main className="mx-auto max-w-7xl px-5 pb-6 pt-8">
         <section className="mb-4 rounded-2xl border border-border bg-surface p-6">
           <h1 className="text-2xl font-semibold tracking-tight">Try Veil</h1>
           <p className="mt-2 text-[14px] text-dim">

@@ -1,6 +1,3 @@
-import { NavBar } from '../components/NavBar'
-import { PUBLIC_NAV_LINKS } from '../lib/navLinks'
-
 const agents = [
   { id: 'peek', label: 'PEEK', src: '/svg/2.png', shiftClass: 'translate-y-0' },
   { id: 'poke', label: 'POKE', src: '/svg/3.png', shiftClass: 'translate-y-[2px]' },
@@ -11,14 +8,6 @@ export function LandingPage() {
   return (
     <div className="min-h-screen w-full bg-[#1a1322] text-[#f4eff7]">
       <div className="flex min-h-screen w-full flex-col px-6 pb-16 pt-10 md:px-12 md:pt-8">
-        <NavBar
-          links={PUBLIC_NAV_LINKS}
-          activeHref="/"
-          size="hero"
-          showDivider
-          dividerClassName="mt-5 w-[calc(100%+3rem)] -mx-6 md:w-[calc(100%+6rem)] md:-mx-12"
-        />
-
         <section className="relative w-[calc(100%+3rem)] -mx-6 overflow-hidden bg-[#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
           <div
             className="pointer-events-none absolute inset-0"

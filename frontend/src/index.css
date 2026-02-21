@@ -119,8 +119,8 @@ a {
 
 .nav-link-block {
   font-family: 'ITC New Baskerville Roman', 'Times New Roman', serif;
-  font-weight: 500;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.22em;
-  -webkit-text-stroke: 0;
+  -webkit-text-stroke: 0.1px currentColor;
 }
