@@ -96,6 +96,16 @@ export function LandingPage() {
                   Drop-in reverse proxy that blocks malicious requests before they reach your backend.
                   When something bypasses, Veil red-teams itself and auto-patches its detection rules, then verifies the fix by replay.
                 </p>
+                <div className="mt-5 flex items-center gap-0" aria-hidden="true">
+                  {[0, 1, 2].map((index) => (
+                    <img
+                      key={index}
+                      src="/svg/gang.png"
+                      alt=""
+                      className="h-auto w-[132px] object-contain md:w-[156px]"
+                    />
+                  ))}
+                </div>
               </div>
 
               <div className="w-full md:w-[470px] md:shrink-0">
