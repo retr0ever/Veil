@@ -15,9 +15,8 @@ export function useVeilSocket() {
 
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const host = window.location.hostname
-    const port = 8000
-    const url = `${protocol}://${host}:${port}/ws`
+    const host = window.location.host
+    const url = `${protocol}://${host}/ws`
 
     function connect() {
       const ws = new WebSocket(url)

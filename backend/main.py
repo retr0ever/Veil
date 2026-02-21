@@ -3,11 +3,13 @@ import json
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .db.database import get_db, init_db
@@ -403,3 +405,16 @@ async def websocket_endpoint(ws: WebSocket):
             await ws.receive_text()
     except WebSocketDisconnect:
         ws_manager.disconnect(ws)
+
+
+# --- Serve static frontend (production) ---
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+
+    @app.get("/{path:path}")
+    async def serve_spa(path: str):
+        file = STATIC_DIR / path
+        if file.exists() and file.is_file():
+            return FileResponse(file)
+        return FileResponse(STATIC_DIR / "index.html")
