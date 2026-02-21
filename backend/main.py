@@ -1,10 +1,13 @@
 import asyncio
 import json
 import os
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,9 +52,12 @@ agent_running = False
 
 
 async def agent_loop():
-    """Background loop: Peek → Poke → Patch, repeat."""
+    """Background loop: Peek -> Poke -> Patch, repeat."""
     global agent_running
     agent_running = True
+
+    # Wait for server to be ready before starting agents
+    await asyncio.sleep(5)
 
     while agent_running:
         try:
@@ -110,36 +116,15 @@ app.add_middleware(
 
 
 # --- Models ---
-class InspectRequest(BaseModel):
-    """Submit a raw HTTP request for classification."""
-    method: str = "GET"
-    path: str = "/"
-    headers: dict = {}
-    body: str = ""
-    query_params: dict = {}
+class AddSiteRequest(BaseModel):
+    url: str
 
 
 class ClassifyRequest(BaseModel):
     message: str
 
 
-# --- Helper ---
-def format_raw_request(req: InspectRequest) -> str:
-    """Format an InspectRequest into a raw HTTP request string for the classifier."""
-    query_string = ""
-    if req.query_params:
-        query_string = "?" + "&".join(f"{k}={v}" for k, v in req.query_params.items())
-
-    lines = [f"{req.method} {req.path}{query_string} HTTP/1.1"]
-    for k, v in req.headers.items():
-        lines.append(f"{k}: {v}")
-
-    raw = "\n".join(lines)
-    if req.body:
-        raw += f"\n\n{req.body}"
-    return raw
-
-
+# --- Helpers ---
 async def get_current_rules():
     db = await get_db()
     cursor = await db.execute("SELECT crusoe_prompt, claude_prompt, version FROM rules ORDER BY version DESC LIMIT 1")
@@ -168,17 +153,13 @@ async def get_stats_data():
     }
 
 
-# --- Main firewall endpoint ---
-@app.post("/v1/inspect")
-async def inspect_request(req: InspectRequest):
-    """Main firewall endpoint. Accepts an HTTP request, classifies it, returns verdict."""
-    raw_request = format_raw_request(req)
-
+async def classify_request(raw_request: str):
+    """Run the two-stage classification on a raw HTTP request string."""
     rules = await get_current_rules()
     if not rules:
-        return {"error": "No classification rules loaded"}
+        return {"classification": "SUSPICIOUS", "confidence": 0.5, "blocked": False, "attack_type": "none", "classifier": "none", "reason": "No rules loaded"}
 
-    # Step 1: Crusoe fast classification
+    # Stage 1: Crusoe fast check
     crusoe_result = await crusoe_classifier.classify(raw_request, rules["crusoe_prompt"])
     classification = crusoe_result.get("classification", "SUSPICIOUS")
     confidence = crusoe_result.get("confidence", 0.5)
@@ -186,7 +167,7 @@ async def inspect_request(req: InspectRequest):
     blocked = False
     final_result = crusoe_result
 
-    # Step 2: If suspicious/malicious, escalate to Claude
+    # Stage 2: If suspicious/malicious, escalate to Claude
     if classification in ("SUSPICIOUS", "MALICIOUS"):
         claude_result = await claude_classifier.classify(raw_request, rules["claude_prompt"])
         final_result = claude_result
@@ -196,7 +177,7 @@ async def inspect_request(req: InspectRequest):
     if classification == "MALICIOUS" and confidence > 0.6:
         blocked = True
 
-    # Log request
+    # Log
     db = await get_db()
     await db.execute(
         """INSERT INTO request_log (timestamp, raw_request, classification, confidence, classifier, blocked, attack_type, response_time_ms)
@@ -227,55 +208,146 @@ async def inspect_request(req: InspectRequest):
         "attack_type": final_result.get("attack_type", "none"),
     })
 
-    if blocked:
-        return {
-            "verdict": "BLOCKED",
-            "classification": classification,
-            "confidence": confidence,
-            "attack_type": final_result.get("attack_type", "unknown"),
-            "reason": final_result.get("reason", ""),
-            "rules_version": rules["version"],
-        }
-
     return {
-        "verdict": "PASS",
         "classification": classification,
         "confidence": confidence,
+        "blocked": blocked,
         "attack_type": final_result.get("attack_type", "none"),
+        "classifier": final_result.get("classifier", "unknown"),
         "reason": final_result.get("reason", ""),
         "rules_version": rules["version"],
     }
 
 
+# --- Site registration ---
+@app.post("/api/sites")
+async def add_site(req: AddSiteRequest):
+    """Register a site to protect. Returns the site_id for the proxy URL."""
+    target_url = req.url.rstrip("/")
+
+    # Validate URL
+    parsed = urlparse(target_url)
+    if not parsed.scheme or not parsed.netloc:
+        return JSONResponse(status_code=400, content={"error": "Invalid URL"})
+
+    db = await get_db()
+
+    # Check if already registered
+    cursor = await db.execute("SELECT site_id, target_url, created_at FROM sites WHERE target_url = ?", (target_url,))
+    existing = await cursor.fetchone()
+    if existing:
+        await db.close()
+        return {"site_id": existing[0], "target_url": existing[1], "created_at": existing[2]}
+
+    site_id = secrets.token_urlsafe(6)
+    now = datetime.utcnow().isoformat()
+
+    await db.execute(
+        "INSERT INTO sites (site_id, target_url, created_at) VALUES (?, ?, ?)",
+        (site_id, target_url, now),
+    )
+    await db.commit()
+    await db.close()
+
+    return {"site_id": site_id, "target_url": target_url, "created_at": now}
+
+
+@app.get("/api/sites")
+async def list_sites():
+    """List all registered sites."""
+    db = await get_db()
+    cursor = await db.execute("SELECT site_id, target_url, created_at FROM sites ORDER BY created_at DESC")
+    rows = await cursor.fetchall()
+    await db.close()
+    return [{"site_id": r[0], "target_url": r[1], "created_at": r[2]} for r in rows]
+
+
+# --- Reverse proxy ---
+@app.api_route("/p/{site_id}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"])
+async def proxy(site_id: str, path: str, request: Request):
+    """Reverse proxy: classifies the request, then forwards to the real backend or blocks."""
+    # Look up site
+    db = await get_db()
+    cursor = await db.execute("SELECT target_url FROM sites WHERE site_id = ?", (site_id,))
+    row = await cursor.fetchone()
+    await db.close()
+
+    if not row:
+        return JSONResponse(status_code=404, content={"error": "Site not found"})
+
+    target_url = row[0]
+
+    # Build raw request string for classification
+    query_string = f"?{request.url.query}" if request.url.query else ""
+    body = (await request.body()).decode("utf-8", errors="replace")
+
+    raw_lines = [f"{request.method} /{path}{query_string} HTTP/1.1"]
+    for key, value in request.headers.items():
+        if key.lower() not in ("host", "connection", "transfer-encoding"):
+            raw_lines.append(f"{key}: {value}")
+    raw_request = "\n".join(raw_lines)
+    if body:
+        raw_request += f"\n\n{body}"
+
+    # Classify
+    result = await classify_request(raw_request)
+
+    if result["blocked"]:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "Blocked by Veil",
+                "classification": result["classification"],
+                "attack_type": result["attack_type"],
+                "reason": result["reason"],
+            },
+        )
+
+    # Forward to real backend
+    forward_url = f"{target_url}/{path}"
+    if request.url.query:
+        forward_url += f"?{request.url.query}"
+
+    # Filter headers for forwarding
+    forward_headers = {}
+    for key, value in request.headers.items():
+        if key.lower() not in ("host", "connection", "transfer-encoding", "content-length"):
+            forward_headers[key] = value
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.request(
+                method=request.method,
+                url=forward_url,
+                headers=forward_headers,
+                content=body.encode() if body else None,
+            )
+
+        # Return the real response
+        excluded_headers = {"transfer-encoding", "connection", "content-encoding", "content-length"}
+        response_headers = {
+            k: v for k, v in resp.headers.items()
+            if k.lower() not in excluded_headers
+        }
+
+        return Response(
+            content=resp.content,
+            status_code=resp.status_code,
+            headers=response_headers,
+        )
+
+    except httpx.RequestError as e:
+        return JSONResponse(
+            status_code=502,
+            content={"error": f"Could not reach backend: {str(e)}"},
+        )
+
+
 # --- Classification-only endpoint (used by Poke) ---
 @app.post("/v1/classify")
 async def classify_only(req: ClassifyRequest):
-    rules = await get_current_rules()
-    if not rules:
-        return {"error": "No rules loaded"}
-
-    crusoe_result = await crusoe_classifier.classify(req.message, rules["crusoe_prompt"])
-    classification = crusoe_result.get("classification", "SUSPICIOUS")
-
-    blocked = False
-    final_result = crusoe_result
-
-    if classification in ("SUSPICIOUS", "MALICIOUS"):
-        claude_result = await claude_classifier.classify(req.message, rules["claude_prompt"])
-        final_result = claude_result
-        classification = claude_result.get("classification", "SUSPICIOUS")
-
-    if classification == "MALICIOUS" and final_result.get("confidence", 0) > 0.6:
-        blocked = True
-
-    return {
-        "classification": classification,
-        "confidence": final_result.get("confidence", 0.5),
-        "blocked": blocked,
-        "attack_type": final_result.get("attack_type", "none"),
-        "classifier": final_result.get("classifier", "unknown"),
-        "reason": final_result.get("reason", ""),
-    }
+    result = await classify_request(req.message)
+    return result
 
 
 # --- Dashboard API ---
@@ -372,7 +444,7 @@ async def trigger_poke():
 
 @app.post("/api/agents/cycle")
 async def trigger_full_cycle():
-    """Run a full Peek → Poke → Patch cycle manually."""
+    """Run a full Peek -> Poke -> Patch cycle manually."""
     discovered = await peek.run()
     await ws_manager.broadcast({"type": "agent", "agent": "peek", "status": "done", "detail": f"Found {discovered} new techniques"})
 

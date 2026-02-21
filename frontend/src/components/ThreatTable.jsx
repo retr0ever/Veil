@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 const severityColors = {
   critical: 'text-blocked',
   high: 'text-suspicious',
-  medium: 'text-text',
+  medium: 'text-dim',
   low: 'text-muted',
 }
 
@@ -24,36 +24,37 @@ export function ThreatTable() {
 
   return (
     <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-      <div className="px-4 py-2 border-b border-border text-muted text-[11px] tracking-wide">
-        THREAT INTELLIGENCE ({threats.length})
+      <div className="px-4 py-2.5 border-b border-border text-muted text-[12px] font-medium">
+        Threat intelligence
+        <span className="ml-2 text-dim">{threats.length}</span>
       </div>
       <div className="flex-1 overflow-y-auto">
         <table className="w-full">
           <thead>
-            <tr className="text-[10px] text-muted tracking-wide border-b border-border">
-              <th className="text-left px-4 py-1.5 font-normal">TECHNIQUE</th>
-              <th className="text-left px-2 py-1.5 font-normal">CATEGORY</th>
-              <th className="text-left px-2 py-1.5 font-normal">SEVERITY</th>
-              <th className="text-left px-2 py-1.5 font-normal">STATUS</th>
-              <th className="text-left px-2 py-1.5 font-normal">SOURCE</th>
+            <tr className="text-[11px] text-muted border-b border-border">
+              <th className="text-left px-4 py-2 font-medium">Technique</th>
+              <th className="text-left px-3 py-2 font-medium">Category</th>
+              <th className="text-left px-3 py-2 font-medium">Severity</th>
+              <th className="text-left px-3 py-2 font-medium">Status</th>
+              <th className="text-left px-3 py-2 font-medium">Source</th>
             </tr>
           </thead>
           <tbody>
             {threats.map((t) => (
               <tr key={t.id} className="border-b border-border/30 text-[12px]">
-                <td className="px-4 py-1.5 truncate max-w-[200px]">{t.technique_name}</td>
-                <td className="px-2 py-1.5 text-muted">{t.category}</td>
-                <td className={`px-2 py-1.5 font-bold ${severityColors[t.severity]}`}>
+                <td className="px-4 py-2 truncate max-w-[220px] text-text">{t.technique_name}</td>
+                <td className="px-3 py-2 text-muted font-mono text-[11px]">{t.category}</td>
+                <td className={`px-3 py-2 font-semibold ${severityColors[t.severity]}`}>
                   {t.severity}
                 </td>
-                <td className="px-2 py-1.5">
+                <td className="px-3 py-2">
                   {t.blocked ? (
-                    <span className="text-safe">blocked</span>
+                    <span className="text-safe text-[11px] bg-safe/10 px-1.5 py-0.5 rounded">blocked</span>
                   ) : (
-                    <span className="text-blocked">exposed</span>
+                    <span className="text-blocked text-[11px] bg-blocked/10 px-1.5 py-0.5 rounded">exposed</span>
                   )}
                 </td>
-                <td className="px-2 py-1.5 text-muted truncate max-w-[140px]">{t.source}</td>
+                <td className="px-3 py-2 text-muted text-[11px] truncate max-w-[140px]">{t.source}</td>
               </tr>
             ))}
           </tbody>

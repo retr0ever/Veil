@@ -127,11 +127,10 @@ SEED_TECHNIQUES = [
 
 async def run():
     """Run the Peek scout agent. Discovers and catalogues new web attack techniques."""
-    db = await get_db()
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     added = 0
 
-    # First, seed any techniques not already in DB
+    # Phase 1: Seed techniques (short DB transaction)
+    db = await get_db()
     for tech in SEED_TECHNIQUES:
         cursor = await db.execute(
             "SELECT id FROM threats WHERE technique_name = ?",
@@ -151,40 +150,44 @@ async def run():
                 ),
             )
             added += 1
+    await db.commit()
 
-    # Then use Claude to generate novel variations of known techniques
+    # Get known techniques for variation generation
     cursor = await db.execute("SELECT technique_name, raw_payload, category FROM threats LIMIT 5")
     known = await cursor.fetchall()
+    known_list = "\n".join([f"- {row[0]} ({row[2]}): {row[1][:150]}" for row in known]) if known else ""
+    await db.close()
 
-    if known:
-        known_list = "\n".join(
-            [f"- {row[0]} ({row[2]}): {row[1][:150]}" for row in known]
-        )
-
-        response = await client.messages.create(
-            model="claude-sonnet-4-5-20250929",
-            max_tokens=2000,
-            system="""You are a security researcher cataloguing web application attack techniques for a WAF (web application firewall). Generate novel variations of known attacks that might bypass pattern-based detection.
+    # Phase 2: Generate novel variations via Claude (DB closed during API call)
+    if known_list and ANTHROPIC_API_KEY:
+        try:
+            client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+            response = await client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=2000,
+                system="""You are a security researcher cataloguing web application attack techniques for a WAF (web application firewall). Generate novel variations of known attacks that might bypass pattern-based detection.
 
 Each payload should be a realistic raw HTTP request or request fragment showing the attack vector.
 
 Output ONLY a JSON array of objects with keys: technique_name, category (sqli/xss/path_traversal/command_injection/ssrf/rce/header_injection/xxe/auth_bypass/encoding_evasion), raw_payload, severity (low/medium/high/critical).
 
 Focus on evasion techniques: encoding tricks, case manipulation, comment insertion, alternative syntax, polyglot payloads.""",
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Here are known techniques. Generate 3 novel variations that use different evasion methods:\n{known_list}",
-                }
-            ],
-        )
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"Here are known techniques. Generate 3 novel variations that use different evasion methods:\n{known_list}",
+                    }
+                ],
+            )
 
-        content = response.content[0].text.strip()
-        try:
+            content = response.content[0].text.strip()
             start_idx = content.find("[")
             end_idx = content.rfind("]") + 1
             if start_idx != -1 and end_idx > start_idx:
                 novel_techniques = json.loads(content[start_idx:end_idx])
+
+                # Phase 3: Store novel techniques (short DB transaction)
+                db = await get_db()
                 for tech in novel_techniques:
                     cursor = await db.execute(
                         "SELECT id FROM threats WHERE technique_name = ?",
@@ -204,12 +207,14 @@ Focus on evasion techniques: encoding tricks, case manipulation, comment inserti
                             ),
                         )
                         added += 1
-        except (json.JSONDecodeError, IndexError):
+                await db.commit()
+                await db.close()
+
+        except Exception:
             pass
 
-    await db.commit()
-
     # Log agent activity
+    db = await get_db()
     await db.execute(
         "INSERT INTO agent_log (timestamp, agent, action, detail, success) VALUES (?, ?, ?, ?, ?)",
         (
