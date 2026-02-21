@@ -80,14 +80,17 @@ export function humaniseAgentEvent(evt) {
 
   const agent = evt.agent || 'system'
   const status = evt.status || 'idle'
+  const detail = evt.detail || ''
 
   if (agent === 'peek') {
     if (status === 'running') {
       return { summary: 'Scanning for new attack techniques...', color: 'text-agent' }
     }
-    const count = extractNumber(evt.detail)
+    const count = extractNumber(detail)
     if (status === 'done' && count !== null) {
-      return { summary: `Veil discovered ${count} new attack technique${count !== 1 ? 's' : ''}`, color: 'text-agent' }
+      const hintMatch = detail.match(/\[hint:\s*([^\]]+)\]/)
+      const hint = hintMatch ? ` (adapting to ${hintMatch[1].replace(/_/g, ' ')})` : ''
+      return { summary: `Veil discovered ${count} new attack technique${count !== 1 ? 's' : ''}${hint}`, color: 'text-agent' }
     }
     if (status === 'done') {
       return { summary: 'Finished scanning for attack techniques', color: 'text-agent' }
@@ -98,15 +101,36 @@ export function humaniseAgentEvent(evt) {
   }
 
   if (agent === 'poke') {
+    const isRepoke = /re-test|re-poke/i.test(detail)
+    if (status === 'running' && isRepoke) {
+      const count = extractNumber(detail)
+      return { summary: `Verifying ${count || ''} threat${count !== 1 ? 's' : ''} after patch...`.replace('  ', ' '), color: 'text-suspicious' }
+    }
     if (status === 'running') {
       return { summary: 'Testing your defences against known attacks...', color: 'text-suspicious' }
     }
+    if (status === 'done' && isRepoke) {
+      const count = extractNumber(detail)
+      if (count === 0) {
+        return { summary: 'All threats now blocked after patch', color: 'text-safe' }
+      }
+      return { summary: `${count} threat${count !== 1 ? 's' : ''} still evading after patch`, color: 'text-blocked' }
+    }
     if (status === 'done') {
-      const match = evt.detail?.match(/(\d+)\s*(?:of|\/)\s*(\d+)/)
+      const match = detail.match(/(\d+)\s*(?:of|\/)\s*(\d+)/)
       if (match) {
         return {
           summary: `Tested your defences \u2014 blocked ${match[1]} of ${match[2]} attacks`,
           color: 'text-suspicious',
+        }
+      }
+      const bypasses = extractNumber(detail)
+      if (bypasses !== null) {
+        return {
+          summary: bypasses === 0
+            ? 'Tested your defences \u2014 all attacks blocked'
+            : `Tested your defences \u2014 ${bypasses} bypass${bypasses !== 1 ? 'es' : ''} found`,
+          color: bypasses === 0 ? 'text-safe' : 'text-suspicious',
         }
       }
       return { summary: 'Finished testing your defences', color: 'text-suspicious' }
@@ -117,18 +141,47 @@ export function humaniseAgentEvent(evt) {
   }
 
   if (agent === 'patch') {
+    const roundMatch = detail.match(/\(round\s*(\d+)\)/)
+    const round = roundMatch ? parseInt(roundMatch[1], 10) : null
+    const roundLabel = round && round > 1 ? ` (round ${round})` : ''
+
     if (status === 'running') {
-      return { summary: 'Strengthening your protection...', color: 'text-safe' }
+      return { summary: `Strengthening your protection${roundLabel}...`, color: 'text-safe' }
     }
     if (status === 'done') {
-      return { summary: 'Strengthened your protection', color: 'text-safe' }
+      const stillMatch = detail.match(/(\d+)\s*still bypassing/)
+      const still = stillMatch ? parseInt(stillMatch[1], 10) : 0
+      if (still > 0) {
+        return { summary: `Patched rules${roundLabel} \u2014 ${still} threat${still !== 1 ? 's' : ''} still evading, retrying`, color: 'text-suspicious' }
+      }
+      return { summary: `Strengthened your protection${roundLabel}`, color: 'text-safe' }
     }
     if (status === 'error') {
       return { summary: 'Protection update encountered an issue', color: 'text-blocked' }
     }
   }
 
-  return { summary: evt.detail || 'System event', color: 'text-muted' }
+  if (agent === 'system') {
+    const cycleMatch = detail.match(/Cycle\s*#(\d+)/)
+    if (cycleMatch) {
+      const parts = []
+      const disc = detail.match(/discovered=(\d+)/)
+      const tested = detail.match(/tested=(\d+)/)
+      const patched = detail.match(/patched=(\d+)/)
+      const rounds = detail.match(/patch_rounds=(\d+)/)
+      if (disc) parts.push(`${disc[1]} discovered`)
+      if (tested) parts.push(`${tested[1]} tested`)
+      if (patched) parts.push(`${patched[1]} patched`)
+      if (rounds && parseInt(rounds[1], 10) > 1) parts.push(`${rounds[1]} patch rounds`)
+      return {
+        summary: `Cycle #${cycleMatch[1]} complete \u2014 ${parts.join(', ') || 'no activity'}`,
+        color: 'text-dim',
+      }
+    }
+    return { summary: detail || 'System event', color: 'text-dim' }
+  }
+
+  return { summary: detail || 'System event', color: 'text-muted' }
 }
 
 export function relativeTime(timestamp) {
@@ -150,6 +203,30 @@ export function relativeTime(timestamp) {
 
   const diffDays = Math.floor(diffHours / 24)
   return `${diffDays}d ago`
+}
+
+export function humaniseAgentRole(agent) {
+  const roles = {
+    peek: { name: 'Scout', verb: 'Discovers new attack patterns' },
+    poke: { name: 'Red Team', verb: 'Tests if Veil can block them' },
+    patch: { name: 'Adapt', verb: 'Analyses gaps and updates rules' },
+    system: { name: 'Orchestrator', verb: 'Coordinates the improvement cycle' },
+  }
+  return roles[agent] || { name: agent, verb: '' }
+}
+
+export function humaniseRuleSource(version) {
+  if (version <= 1) return 'Initial'
+  return 'AI patch'
+}
+
+export function humaniseEmptyState(context) {
+  const messages = {
+    feed: 'No classifications yet. Connect your site or check the Agents tab.',
+    agents: 'Agents have not run yet. Start an improvement cycle to see activity.',
+    threats: 'No threats discovered yet. Run an improvement cycle to begin scanning.',
+  }
+  return messages[context] || 'No data yet.'
 }
 
 function extractNumber(text) {

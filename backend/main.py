@@ -98,6 +98,7 @@ RATE_LIMITS = {
     "proxy": (60, 60),       # 60 req/min per IP
     "auth": (10, 60),        # 10 req/min per IP
     "api": (60, 60),         # 60 req/min per IP
+    "agents": (3, 300),      # 3 req/5min per IP (expensive LLM calls)
 }
 
 
@@ -142,11 +143,151 @@ ws_manager = ConnectionManager()
 
 # --- Agent loop state ---
 agent_running = False
+_last_cycle_hint: dict | None = None
+_cycle_counter: int = 0
+MAX_PATCH_ROUNDS = 2
+
+
+def _make_cycle_ctx(hint: dict | None = None) -> dict:
+    """Create a fresh cycle context dict."""
+    global _cycle_counter
+    _cycle_counter += 1
+    return {
+        "cycle_id": str(_cycle_counter),
+        "discovered_count": 0,
+        "strategies_used": [],
+        "categories_discovered": [],
+        "tested_count": 0,
+        "blocked_count": 0,
+        "bypasses": [],
+        "bypass_categories": [],
+        "poke_summary": {},
+        "patch_rounds": [],
+        "hint": hint,
+    }
+
+
+def _build_cycle_hint(cycle_ctx: dict) -> dict | None:
+    """Extract cross-cycle hint from a completed cycle context."""
+
+    rounds = cycle_ctx.get("patch_rounds", [])
+    if not rounds:
+        return None
+
+    last_round = rounds[-1]
+    bypass_categories = cycle_ctx.get("bypass_categories", [])
+
+    # Collect still-bypassing IDs from the last patch round's result
+    last_bypasses = cycle_ctx.get("_last_still_bypassing", [])
+
+    return {
+        "dominant_failure_mode": last_round.get("dominant_failure", "unknown"),
+        "weak_categories": bypass_categories,
+        "still_bypassing_count": last_round.get("still_bypassing", 0),
+        "still_bypassing_ids": [b["threat_id"] for b in last_bypasses],
+    }
+
+
+async def _log_cycle_summary(cycle_ctx: dict):
+    """Write a unified cycle summary to agent_log."""
+
+    rounds = cycle_ctx.get("patch_rounds", [])
+    total_patched = sum(r.get("patched", 0) for r in rounds)
+    total_verified = sum(r.get("verified", 0) for r in rounds)
+    hint = cycle_ctx.get("hint")
+
+    detail = (
+        f"Cycle #{cycle_ctx['cycle_id']}: "
+        f"discovered={cycle_ctx['discovered_count']}, "
+        f"tested={cycle_ctx['tested_count']}, "
+        f"blocked={cycle_ctx['blocked_count']}, "
+        f"bypasses={len(cycle_ctx['bypasses'])}, "
+        f"patch_rounds={len(rounds)}, "
+        f"patched={total_patched}, verified={total_verified}"
+    )
+    if hint:
+        detail += f" [hint_from_prev: {hint.get('dominant_failure_mode', 'none')}]"
+    if cycle_ctx.get("strategies_used"):
+        detail += f" [strategies: {','.join(cycle_ctx['strategies_used'])}]"
+
+    if len(detail) > 500:
+        detail = detail[:497] + "..."
+
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO agent_log (timestamp, agent, action, detail, success) VALUES (?, ?, ?, ?, ?)",
+            (
+                datetime.utcnow().isoformat(),
+                "system",
+                "cycle_summary",
+                detail,
+                1,
+            ),
+        )
+        await db.commit()
+
+
+async def _run_closed_loop(cycle_ctx: dict):
+    """Execute the closed-loop Peek -> Poke -> Patch(+re-poke) cycle."""
+
+    # 1. Peek: discover new techniques
+    await ws_manager.broadcast({"type": "agent", "agent": "peek", "status": "running", "detail": "Scanning for new attack techniques..."})
+    discovered = await peek.run(cycle_ctx)
+    await ws_manager.broadcast({"type": "agent", "agent": "peek", "status": "done", "detail": f"Found {discovered} new techniques"})
+
+    await asyncio.sleep(2)
+
+    # 2. Poke: test defences
+    await ws_manager.broadcast({"type": "agent", "agent": "poke", "status": "running", "detail": "Red-teaming current defences..."})
+    bypasses = await poke.run(cycle_ctx)
+    await ws_manager.broadcast({"type": "agent", "agent": "poke", "status": "done", "detail": f"Found {len(bypasses)} bypasses"})
+
+    await asyncio.sleep(2)
+
+    # 3. Iterative Patch + verification re-poke
+    if not bypasses:
+        await ws_manager.broadcast({"type": "agent", "agent": "patch", "status": "idle", "detail": "No bypasses to fix"})
+        return
+
+    current_bypasses = bypasses
+    for round_num in range(1, MAX_PATCH_ROUNDS + 1):
+        await ws_manager.broadcast({
+            "type": "agent", "agent": "patch", "status": "running",
+            "detail": f"Patching {len(current_bypasses)} bypasses (round {round_num})..."
+        })
+        result = await patch.run(current_bypasses, cycle_ctx)
+        still_bypassing = result.get("still_bypassing", [])
+        cycle_ctx["_last_still_bypassing"] = still_bypassing
+
+        await ws_manager.broadcast({
+            "type": "agent", "agent": "patch", "status": "done",
+            "detail": f"Patched {result['patched']} vulnerabilities, {len(still_bypassing)} still bypassing (round {round_num})"
+        })
+
+        if not still_bypassing or round_num >= MAX_PATCH_ROUNDS:
+            break
+
+        # Verification re-poke on still-bypassing threats
+        repoke_ids = [b["threat_id"] for b in still_bypassing]
+        await ws_manager.broadcast({
+            "type": "agent", "agent": "poke", "status": "running",
+            "detail": f"Re-testing {len(repoke_ids)} still-bypassing threats..."
+        })
+        repoke_bypasses = await poke.run(target_ids=repoke_ids)
+        await ws_manager.broadcast({
+            "type": "agent", "agent": "poke", "status": "done",
+            "detail": f"Re-poke: {len(repoke_bypasses)} still bypass after patch"
+        })
+
+        if not repoke_bypasses:
+            break
+
+        current_bypasses = repoke_bypasses
 
 
 async def agent_loop():
-    """Background loop: Peek -> Poke -> Patch, repeat."""
-    global agent_running
+    """Background loop: closed-loop Peek -> Poke -> Patch, repeat."""
+    global agent_running, _last_cycle_hint
     agent_running = True
 
     # Wait for server to be ready before starting agents
@@ -154,31 +295,19 @@ async def agent_loop():
 
     while agent_running:
         try:
-            # 1. Peek: discover new techniques
-            await ws_manager.broadcast({"type": "agent", "agent": "peek", "status": "running", "detail": "Scanning for new attack techniques..."})
-            discovered = await peek.run()
-            await ws_manager.broadcast({"type": "agent", "agent": "peek", "status": "done", "detail": f"Found {discovered} new techniques"})
+            cycle_ctx = _make_cycle_ctx(hint=_last_cycle_hint)
 
-            await asyncio.sleep(2)
+            await _run_closed_loop(cycle_ctx)
 
-            # 2. Poke: test defences
-            await ws_manager.broadcast({"type": "agent", "agent": "poke", "status": "running", "detail": "Red-teaming current defences..."})
-            bypasses = await poke.run()
-            await ws_manager.broadcast({"type": "agent", "agent": "poke", "status": "done", "detail": f"Found {len(bypasses)} bypasses"})
-
-            await asyncio.sleep(2)
-
-            # 3. Patch: fix bypasses
-            if bypasses:
-                await ws_manager.broadcast({"type": "agent", "agent": "patch", "status": "running", "detail": f"Patching {len(bypasses)} bypasses..."})
-                result = await patch.run(bypasses)
-                await ws_manager.broadcast({"type": "agent", "agent": "patch", "status": "done", "detail": f"Patched {result['patched']} vulnerabilities"})
-            else:
-                await ws_manager.broadcast({"type": "agent", "agent": "patch", "status": "idle", "detail": "No bypasses to fix"})
+            # Log cycle summary
+            await _log_cycle_summary(cycle_ctx)
 
             # Broadcast updated stats
             stats = await get_stats_data()
             await ws_manager.broadcast({"type": "stats", **stats})
+
+            # Build hint for next cycle
+            _last_cycle_hint = _build_cycle_hint(cycle_ctx)
 
         except Exception as e:
             await ws_manager.broadcast({"type": "agent", "agent": "system", "status": "error", "detail": str(e)})
@@ -573,14 +702,28 @@ async def classify_only(req: ClassifyRequest, request: Request):
     return result
 
 
-# --- Dashboard API ---
+# --- Auth helper for dashboard API ---
+async def require_auth(request: Request) -> dict | JSONResponse:
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Authentication required"})
+    return user
+
+
+# --- Dashboard API (all require auth) ---
 @app.get("/api/stats")
-async def get_stats():
+async def get_stats(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
     return await get_stats_data()
 
 
 @app.get("/api/threats")
-async def get_threats():
+async def get_threats(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
     async with get_db() as db:
         cursor = await db.execute("SELECT * FROM threats ORDER BY discovered_at DESC")
         rows = await cursor.fetchall()
@@ -602,7 +745,10 @@ async def get_threats():
 
 
 @app.get("/api/agents")
-async def get_agent_log():
+async def get_agent_log(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
     async with get_db() as db:
         cursor = await db.execute("SELECT * FROM agent_log ORDER BY timestamp DESC LIMIT 50")
         rows = await cursor.fetchall()
@@ -620,7 +766,10 @@ async def get_agent_log():
 
 
 @app.get("/api/requests")
-async def get_requests():
+async def get_requests(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
     async with get_db() as db:
         cursor = await db.execute("SELECT * FROM request_log ORDER BY timestamp DESC LIMIT 100")
         rows = await cursor.fetchall()
@@ -641,47 +790,67 @@ async def get_requests():
 
 
 @app.get("/api/rules")
-async def get_rules():
+async def get_rules(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
     async with get_db() as db:
         cursor = await db.execute("SELECT version, updated_at, updated_by FROM rules ORDER BY version DESC")
         rows = await cursor.fetchall()
     return [{"version": r[0], "updated_at": r[1], "updated_by": r[2]} for r in rows]
 
 
-# --- Trigger agents manually ---
+# --- Trigger agents manually (auth + rate limited) ---
 @app.post("/api/agents/peek/run")
-async def trigger_peek():
-    discovered = await peek.run()
-    return {"discovered": discovered}
+async def trigger_peek(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
+    if r := check_rate_limit(request, "agents"):
+        return r
+    ctx = _make_cycle_ctx(hint=_last_cycle_hint)
+    discovered = await peek.run(ctx)
+    return {"discovered": discovered, "strategies_used": ctx.get("strategies_used", [])}
 
 
 @app.post("/api/agents/poke/run")
-async def trigger_poke():
-    bypasses = await poke.run()
+async def trigger_poke(request: Request):
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
+    if r := check_rate_limit(request, "agents"):
+        return r
+    ctx = _make_cycle_ctx()
+    bypasses = await poke.run(ctx)
     return {"bypasses": len(bypasses), "details": bypasses}
 
 
 @app.post("/api/agents/cycle")
-async def trigger_full_cycle():
-    """Run a full Peek -> Poke -> Patch cycle manually."""
-    discovered = await peek.run()
-    await ws_manager.broadcast({"type": "agent", "agent": "peek", "status": "done", "detail": f"Found {discovered} new techniques"})
+async def trigger_full_cycle(request: Request):
+    """Run a full closed-loop Peek -> Poke -> Patch cycle manually."""
+    global _last_cycle_hint
+    auth = await require_auth(request)
+    if isinstance(auth, JSONResponse):
+        return auth
+    if r := check_rate_limit(request, "agents"):
+        return r
 
-    bypasses = await poke.run()
-    await ws_manager.broadcast({"type": "agent", "agent": "poke", "status": "done", "detail": f"Found {len(bypasses)} bypasses"})
+    cycle_ctx = _make_cycle_ctx(hint=_last_cycle_hint)
 
-    patch_result = {"patched": 0}
-    if bypasses:
-        patch_result = await patch.run(bypasses)
-        await ws_manager.broadcast({"type": "agent", "agent": "patch", "status": "done", "detail": f"Patched {patch_result['patched']}"})
+    await _run_closed_loop(cycle_ctx)
+    await _log_cycle_summary(cycle_ctx)
 
     stats = await get_stats_data()
     await ws_manager.broadcast({"type": "stats", **stats})
 
+    _last_cycle_hint = _build_cycle_hint(cycle_ctx)
+
     return {
-        "discovered": discovered,
-        "bypasses": len(bypasses),
-        "patched": patch_result["patched"],
+        "cycle_id": cycle_ctx["cycle_id"],
+        "discovered": cycle_ctx["discovered_count"],
+        "bypasses": len(cycle_ctx["bypasses"]),
+        "patch_rounds": cycle_ctx["patch_rounds"],
+        "strategies_used": cycle_ctx["strategies_used"],
         "stats": stats,
     }
 

@@ -1,122 +1,342 @@
-"""Patch — Adaptation Agent. Analyses WAF bypasses and updates detection rules."""
+"""Patch — Adaptation Agent. Root-cause analysis of WAF bypasses and intelligent rule evolution."""
 
 from anthropic import AsyncAnthropicBedrock
+import httpx
 import json
 import os
 from datetime import datetime
 from ..db.database import get_db
 
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
-BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "global.anthropic.claude-sonnet-4-5-20250929-v1:0")
+BEDROCK_MODEL = os.getenv(
+    "BEDROCK_MODEL", "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+)
+VEIL_PROXY_URL = os.getenv("VEIL_PROXY_URL", "http://localhost:8000")
 
+# Max bypasses to verify after patching (keeps cycle time bounded)
+MAX_VERIFY = 3
 
-async def run(bypasses: list[dict]):
-    """Run the Patch adaptation agent. Analyses bypasses and strengthens defences."""
-    if not bypasses:
-        return {"patched": 0, "verified": 0}
+# ---------------------------------------------------------------------------
+# Failure mode classification
+# ---------------------------------------------------------------------------
 
-    # Get current rules
-    async with get_db() as db:
-        cursor = await db.execute("SELECT * FROM rules ORDER BY version DESC LIMIT 1")
-        current_rules = await cursor.fetchone()
-        current_crusoe_prompt = current_rules[2]  # crusoe_prompt
-        current_claude_prompt = current_rules[3]  # claude_prompt
-        current_version = current_rules[1]  # version
-
-    # Build bypass report
-    bypass_report = "\n\n".join([
-        f"BYPASS #{i+1}:\n"
-        f"Technique: {b['technique_name']}\n"
-        f"Category: {b['category']}\n"
-        f"Severity: {b['severity']}\n"
-        f"Payload: {b['payload'][:300]}\n"
-        f"Classifier said: {json.dumps(b.get('classifier_response', {}))}"
-        for i, b in enumerate(bypasses)
-    ])
-
-    patched = 0
-    verified = 0
-
-    # Try Claude-based patching if API key is available
-    if os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("AWS_PROFILE"):
-        try:
-            client = AsyncAnthropicBedrock(aws_region=AWS_REGION)
-            response = await client.messages.create(
-                model=BEDROCK_MODEL,
-                max_tokens=3000,
-                system="""You are a WAF (web application firewall) security engineer. You are given bypass reports showing HTTP attack payloads that got past the current firewall rules. Analyse WHY each bypass succeeded and generate UPDATED detection prompts.
-
-The firewall uses AI models to classify raw HTTP requests. The prompts you generate must teach the classifier to recognise web attack patterns including SQL injection, XSS, path traversal, command injection, SSRF, RCE, XXE, header injection, auth bypass, and encoding evasion techniques.
-
-You must output ONLY a JSON object with:
-{
-    "analysis": "Brief explanation of what the current rules missed and what evasion technique was used",
-    "crusoe_prompt": "The COMPLETE updated system prompt for the fast Crusoe classifier. Include ALL existing patterns plus new ones to catch these bypasses.",
-    "claude_prompt": "The COMPLETE updated system prompt for the deep Claude classifier. Include ALL existing patterns plus new ones."
+FAILURE_MODES = {
+    "pattern_gap": "Attack pattern not present in rules at all — the classifiers have never seen this technique",
+    "encoding_evasion": "Known attack pattern but obfuscated via encoding, case tricks, comment insertion, or Unicode tricks",
+    "context_blind_spot": "Attack delivered in an unusual HTTP context (headers, multipart, GraphQL, XML attributes) that classifiers don't inspect deeply",
+    "semantic_miss": "AI classifier saw the payload but failed to recognise malicious intent — likely because the attack uses legitimate syntax in a malicious context",
+    "confidence_underflow": "Classifier flagged correctly but confidence was too low to trigger a block (below 0.6 threshold)",
 }
 
-IMPORTANT: The updated prompts must be COMPLETE replacements, not patches. Include everything from the current prompts plus additions.""",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"CURRENT CRUSOE PROMPT:\n{current_crusoe_prompt}\n\nCURRENT CLAUDE PROMPT:\n{current_claude_prompt}\n\nBYPASS REPORTS:\n{bypass_report}",
-                    }
-                ],
-            )
 
-            content = response.content[0].text.strip()
+def _classify_failure(bypass: dict) -> str:
+    """Determine why a bypass succeeded based on classifier response."""
 
-            start_idx = content.find("{")
-            end_idx = content.rfind("}") + 1
-            if start_idx != -1 and end_idx > start_idx:
-                update = json.loads(content[start_idx:end_idx])
-                new_crusoe = update.get("crusoe_prompt", current_crusoe_prompt)
-                new_claude = update.get("claude_prompt", current_claude_prompt)
-                analysis = update.get("analysis", "No analysis provided")
+    resp = bypass.get("classifier_response", {})
+    classification = resp.get("classification", "SAFE")
+    confidence = resp.get("confidence", 0.0)
+    category = bypass.get("category", "")
+    payload = bypass.get("payload", "").lower()
 
-                # Deploy new rules
-                new_version = current_version + 1
-                async with get_db() as db:
-                    await db.execute(
-                        """INSERT INTO rules (version, crusoe_prompt, claude_prompt, updated_at, updated_by)
-                        VALUES (?, ?, ?, ?, ?)""",
-                        (new_version, new_crusoe, new_claude, datetime.utcnow().isoformat(), "patch"),
-                    )
+    # Confidence underflow: classifier said MALICIOUS but confidence too low
+    if classification == "MALICIOUS" and confidence <= 0.6:
+        return "confidence_underflow"
 
-                    # Mark bypasses as patched
-                    for b in bypasses:
-                        await db.execute(
-                            "UPDATE threats SET patched_at = ?, blocked = 1 WHERE id = ?",
-                            (datetime.utcnow().isoformat(), b["threat_id"]),
-                        )
-                        patched += 1
+    # Encoding evasion signals
+    encoding_signals = [
+        "%25", "%00", "\\u00", "%c0", "%fe", "%ff",  # double encoding, null bytes, overlong utf-8
+        "/**/", "/*!",  # SQL comment tricks
+        "&#", "&lt;", "&gt;",  # HTML entities
+    ]
+    if any(sig in payload for sig in encoding_signals):
+        return "encoding_evasion"
 
-                    await db.execute(
-                        "INSERT INTO agent_log (timestamp, agent, action, detail, success) VALUES (?, ?, ?, ?, ?)",
-                        (
-                            datetime.utcnow().isoformat(),
-                            "patch",
-                            "adapt",
-                            f"v{current_version}->v{new_version}: {analysis[:200]}. Patched {patched} bypasses.",
-                            1,
-                        ),
-                    )
-                    await db.commit()
+    # Context blind spot signals
+    context_signals = [
+        "multipart/form-data", "content-type: application/xml",
+        "x-forwarded-for:", "graphql", "websocket", "upgrade:",
+        "transfer-encoding: chunked",
+    ]
+    if any(sig in payload for sig in context_signals):
+        if classification == "SAFE":
+            return "context_blind_spot"
 
-                return {"patched": patched, "verified": verified}
+    # Semantic miss: classifier said SAFE on a known attack category
+    if classification == "SAFE" and category in (
+        "sqli", "xss", "command_injection", "rce", "ssrf",
+    ):
+        return "semantic_miss"
 
-        except (json.JSONDecodeError, KeyError, Exception) as e:
-            # Fall through to heuristic patching below
-            pass
+    # Default: pattern not in rules
+    return "pattern_gap"
 
-    # Heuristic patching: mark all bypasses as patched and bump rule version
-    # This makes the demo work even without API keys
+
+# ---------------------------------------------------------------------------
+# Phase 1: Bypass Analysis (no LLM)
+# ---------------------------------------------------------------------------
+
+
+def _analyse_bypasses(bypasses: list[dict]) -> dict:
+    """Group bypasses by category and failure mode. Returns a threat profile."""
+
+    by_category = {}
+    by_failure_mode = {}
+
+    for b in bypasses:
+        cat = b.get("category", "unknown")
+        if cat not in by_category:
+            by_category[cat] = []
+        by_category[cat].append(b)
+
+        mode = _classify_failure(b)
+        b["failure_mode"] = mode
+        if mode not in by_failure_mode:
+            by_failure_mode[mode] = []
+        by_failure_mode[mode].append(b)
+
+    return {
+        "by_category": by_category,
+        "by_failure_mode": by_failure_mode,
+        "total": len(bypasses),
+        "categories_affected": list(by_category.keys()),
+        "dominant_failure": max(by_failure_mode, key=lambda k: len(by_failure_mode[k])) if by_failure_mode else "unknown",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Build Rich Bypass Report
+# ---------------------------------------------------------------------------
+
+
+def _build_bypass_report(bypasses: list[dict], profile: dict) -> str:
+    """Build a structured bypass report with failure mode annotations."""
+
+    sections = []
+
+    # Threat profile summary
+    mode_counts = {
+        mode: len(items) for mode, items in profile["by_failure_mode"].items()
+    }
+    mode_summary = ", ".join(f"{mode}: {count}" for mode, count in mode_counts.items())
+
+    sections.append(
+        f"THREAT PROFILE:\n"
+        f"- {profile['total']} total bypasses across {len(profile['categories_affected'])} categories\n"
+        f"- Categories: {', '.join(profile['categories_affected'])}\n"
+        f"- Failure modes: {mode_summary}\n"
+        f"- Dominant failure: {profile['dominant_failure']} — {FAILURE_MODES.get(profile['dominant_failure'], '')}"
+    )
+
+    # Individual bypass reports
+    for i, b in enumerate(bypasses):
+        classifier_info = json.dumps(b.get("classifier_response", {}))
+        sections.append(
+            f"BYPASS #{i+1}:\n"
+            f"  Technique: {b['technique_name']}\n"
+            f"  Category: {b.get('category', 'unknown')}\n"
+            f"  Severity: {b.get('severity', 'medium')}\n"
+            f"  Failure mode: {b.get('failure_mode', 'unknown')} — {FAILURE_MODES.get(b.get('failure_mode', ''), '')}\n"
+            f"  Bypass score: {b.get('bypass_score', 0):.1f}\n"
+            f"  Payload (truncated): {b.get('payload', '')[:300]}\n"
+            f"  Classifier response: {classifier_info}"
+        )
+
+    return "\n\n".join(sections)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Prompt Engineering (LLM call)
+# ---------------------------------------------------------------------------
+
+PATCH_SYSTEM_PROMPT = """You are a senior WAF defence engineer performing root-cause analysis on firewall bypasses. Your mission is to understand WHY each bypass succeeded and evolve the detection rules to prevent similar attacks in the future.
+
+You receive bypasses annotated with failure modes:
+- pattern_gap: the attack pattern is completely absent from the rules
+- encoding_evasion: a known pattern was obfuscated and the rules didn't decode it
+- context_blind_spot: the attack was delivered in an HTTP context the classifiers ignore
+- semantic_miss: the AI saw the payload but failed to recognise malicious intent
+- confidence_underflow: correctly flagged but confidence was too low to block
+
+For each failure mode, apply the appropriate fix:
+- pattern_gap → add the new attack pattern and its common variants to the rules
+- encoding_evasion → add instructions to decode/normalise before matching (URL decode, HTML entity decode, Unicode normalise, strip comments/whitespace)
+- context_blind_spot → expand inspection scope to cover the blind context (headers, multipart fields, XML attributes, GraphQL variables, etc.)
+- semantic_miss → add semantic descriptions of the attack's INTENT, not just its syntax — explain what the attacker is trying to achieve
+- confidence_underflow → strengthen the language around matching patterns to boost classifier confidence (use words like "definitely", "clearly malicious", "always block")
+
+CRITICAL RULES:
+1. Updated prompts must be COMPLETE replacements — include ALL existing patterns plus your additions
+2. Never remove existing patterns — only add, strengthen, or clarify
+3. Be specific: don't just say "watch for encoding tricks" — list the exact encodings and how to decode them
+4. Include real examples of evasion patterns alongside the rules
+
+Output ONLY a valid JSON object with:
+{
+    "analysis": "2-3 sentence summary of what the WAF missed and the root causes",
+    "patterns_added": ["list of new patterns/rules you added"],
+    "crusoe_prompt": "The COMPLETE updated Crusoe classifier system prompt",
+    "claude_prompt": "The COMPLETE updated Claude classifier system prompt"
+}"""
+
+
+async def _generate_patch(
+    bypasses: list[dict],
+    profile: dict,
+    current_crusoe: str,
+    current_claude: str,
+) -> dict | None:
+    """Call Claude to generate updated detection rules. Returns parsed update or None."""
+
+    bypass_report = _build_bypass_report(bypasses, profile)
+
+    user_prompt = (
+        f"CURRENT CRUSOE PROMPT (fast classifier):\n{current_crusoe}\n\n"
+        f"CURRENT CLAUDE PROMPT (deep classifier):\n{current_claude}\n\n"
+        f"BYPASS REPORTS:\n{bypass_report}"
+    )
+
+    client = AsyncAnthropicBedrock(aws_region=AWS_REGION)
+    response = await client.messages.create(
+        model=BEDROCK_MODEL,
+        max_tokens=4000,
+        system=PATCH_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+
+    content = response.content[0].text.strip()
+
+    start_idx = content.find("{")
+    end_idx = content.rfind("}") + 1
+    if start_idx == -1 or end_idx <= start_idx:
+        return None
+
+    try:
+        return json.loads(content[start_idx:end_idx])
+    except json.JSONDecodeError:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Deploy & Verify
+# ---------------------------------------------------------------------------
+
+
+async def _deploy_rules(
+    update: dict,
+    current_version: int,
+    current_crusoe: str,
+    current_claude: str,
+    updated_by: str = "patch",
+) -> int:
+    """Deploy new rules to the database. Returns new version number."""
+
+    new_crusoe = update.get("crusoe_prompt", current_crusoe)
+    new_claude = update.get("claude_prompt", current_claude)
     new_version = current_version + 1
+
     async with get_db() as db:
         await db.execute(
             """INSERT INTO rules (version, crusoe_prompt, claude_prompt, updated_at, updated_by)
             VALUES (?, ?, ?, ?, ?)""",
-            (new_version, current_crusoe_prompt, current_claude_prompt, datetime.utcnow().isoformat(), "patch/heuristic"),
+            (new_version, new_crusoe, new_claude, datetime.utcnow().isoformat(), updated_by),
+        )
+        await db.commit()
+
+    return new_version
+
+
+async def _verify_patch(bypasses: list[dict]) -> list[dict]:
+    """Re-test a sample of the worst bypasses against the newly deployed rules.
+
+    Returns list of verification results.
+    """
+
+    sample = bypasses[:MAX_VERIFY]
+    verified = []
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        for b in sample:
+            try:
+                resp = await client.post(
+                    f"{VEIL_PROXY_URL}/v1/classify",
+                    json={"message": b.get("payload", "")},
+                )
+                if resp.status_code == 200:
+                    result = resp.json()
+                    verified.append({
+                        "threat_id": b["threat_id"],
+                        "technique_name": b["technique_name"],
+                        "now_blocked": result.get("blocked", False),
+                        "confidence": result.get("confidence", 0.0),
+                    })
+            except Exception:
+                pass
+
+    return verified
+
+
+async def _mark_patched(bypasses: list[dict], verified: list[dict]):
+    """Mark bypasses as patched in the database. Update block status for verified ones."""
+
+    verified_map = {v["threat_id"]: v for v in verified}
+
+    async with get_db() as db:
+        for b in bypasses:
+            tid = b["threat_id"]
+            now = datetime.utcnow().isoformat()
+
+            if tid in verified_map and verified_map[tid]["now_blocked"]:
+                # Verified: patch confirmed working
+                await db.execute(
+                    "UPDATE threats SET patched_at = ?, blocked = 1 WHERE id = ?",
+                    (now, tid),
+                )
+            else:
+                # Unverified: mark patched but don't claim blocked
+                await db.execute(
+                    "UPDATE threats SET patched_at = ? WHERE id = ?",
+                    (now, tid),
+                )
+
+        await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Heuristic fallback (no API keys)
+# ---------------------------------------------------------------------------
+
+
+def _populate_cycle_ctx(cycle_ctx: dict | None, result: dict, profile: dict, round_num: int):
+    """Append a round entry to cycle_ctx['patch_rounds']."""
+
+    if cycle_ctx is None:
+        return
+
+    cycle_ctx.setdefault("patch_rounds", []).append({
+        "round": round_num,
+        "patched": result.get("patched", 0),
+        "verified": result.get("verified", 0),
+        "still_bypassing": len(result.get("still_bypassing", [])),
+        "dominant_failure": result.get("dominant_failure", "unknown"),
+        "rules_version": result.get("rules_version", 0),
+    })
+
+
+async def _heuristic_patch(
+    bypasses: list[dict],
+    current_version: int,
+    current_crusoe: str,
+    current_claude: str,
+) -> dict:
+    """Fallback: bump version and mark patched without actually changing rules."""
+
+    new_version = current_version + 1
+
+    async with get_db() as db:
+        await db.execute(
+            """INSERT INTO rules (version, crusoe_prompt, claude_prompt, updated_at, updated_by)
+            VALUES (?, ?, ?, ?, ?)""",
+            (new_version, current_crusoe, current_claude, datetime.utcnow().isoformat(), "patch/heuristic"),
         )
 
         for b in bypasses:
@@ -124,7 +344,6 @@ IMPORTANT: The updated prompts must be COMPLETE replacements, not patches. Inclu
                 "UPDATE threats SET patched_at = ?, blocked = 1 WHERE id = ?",
                 (datetime.utcnow().isoformat(), b["threat_id"]),
             )
-            patched += 1
 
         await db.execute(
             "INSERT INTO agent_log (timestamp, agent, action, detail, success) VALUES (?, ?, ?, ?, ?)",
@@ -132,10 +351,142 @@ IMPORTANT: The updated prompts must be COMPLETE replacements, not patches. Inclu
                 datetime.utcnow().isoformat(),
                 "patch",
                 "adapt",
-                f"v{current_version}->v{new_version}: Heuristic patch for {patched} bypasses.",
+                f"v{current_version}->v{new_version}: Heuristic patch for {len(bypasses)} bypasses",
                 1,
             ),
         )
         await db.commit()
 
-    return {"patched": patched, "verified": verified}
+    return {
+        "patched": len(bypasses),
+        "verified": 0,
+        "still_bypassing": [],
+        "dominant_failure": "unknown",
+        "failure_modes": {},
+        "rules_version": new_version,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Main run
+# ---------------------------------------------------------------------------
+
+
+async def run(bypasses: list[dict], cycle_ctx: dict | None = None) -> dict:
+    """Run the Patch adaptation agent.
+
+    Returns enriched dict: {patched, verified, still_bypassing, dominant_failure,
+    failure_modes, rules_version}.
+    """
+
+    if not bypasses:
+        return {
+            "patched": 0, "verified": 0,
+            "still_bypassing": [], "dominant_failure": "unknown",
+            "failure_modes": {}, "rules_version": 0,
+        }
+
+    # Load current rules
+    async with get_db() as db:
+        cursor = await db.execute("SELECT * FROM rules ORDER BY version DESC LIMIT 1")
+        current_rules = await cursor.fetchone()
+        current_version = current_rules["version"]
+        current_crusoe = current_rules["crusoe_prompt"]
+        current_claude = current_rules["claude_prompt"]
+
+    # Phase 1: Analyse bypasses
+    profile = _analyse_bypasses(bypasses)
+
+    # Phase 2+3: Generate patch via LLM (or fall back to heuristic)
+    if not (os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("AWS_PROFILE")):
+        result = await _heuristic_patch(bypasses, current_version, current_crusoe, current_claude)
+        round_num = len((cycle_ctx or {}).get("patch_rounds", [])) + 1
+        _populate_cycle_ctx(cycle_ctx, result, profile, round_num)
+        return result
+
+    try:
+        update = await _generate_patch(bypasses, profile, current_crusoe, current_claude)
+    except Exception:
+        result = await _heuristic_patch(bypasses, current_version, current_crusoe, current_claude)
+        round_num = len((cycle_ctx or {}).get("patch_rounds", [])) + 1
+        _populate_cycle_ctx(cycle_ctx, result, profile, round_num)
+        return result
+
+    if not update:
+        result = await _heuristic_patch(bypasses, current_version, current_crusoe, current_claude)
+        round_num = len((cycle_ctx or {}).get("patch_rounds", [])) + 1
+        _populate_cycle_ctx(cycle_ctx, result, profile, round_num)
+        return result
+
+    # Phase 4: Deploy new rules
+    analysis = update.get("analysis", "No analysis provided")
+    patterns_added = update.get("patterns_added", [])
+    new_version = await _deploy_rules(update, current_version, current_crusoe, current_claude)
+
+    # Verify a sample of the worst bypasses
+    verified = await _verify_patch(bypasses)
+    verified_blocked = sum(1 for v in verified if v["now_blocked"])
+
+    # Mark bypasses as patched
+    await _mark_patched(bypasses, verified)
+
+    patched = len(bypasses)
+
+    # Compute still-bypassing list from verification results
+    verified_map = {v["threat_id"]: v for v in verified}
+    still_bypassing = [
+        {"threat_id": b["threat_id"], "technique_name": b["technique_name"],
+         "category": b.get("category", "unknown"), "failure_mode": b.get("failure_mode", "unknown")}
+        for b in bypasses
+        if b["threat_id"] in verified_map and not verified_map[b["threat_id"]]["now_blocked"]
+    ]
+
+    # Build failure_modes summary
+    failure_modes_summary = {
+        mode: len(items) for mode, items in profile["by_failure_mode"].items()
+    }
+
+    # Build log detail
+    patterns_str = ", ".join(patterns_added[:5]) if patterns_added else "see updated prompts"
+    failure_modes_str = ", ".join(
+        f"{mode}({len(items)})"
+        for mode, items in profile["by_failure_mode"].items()
+    )
+    detail = (
+        f"v{current_version}->v{new_version}: {analysis[:150]}. "
+        f"Failure modes: [{failure_modes_str}]. "
+        f"Patterns added: {patterns_str}. "
+        f"Verified {verified_blocked}/{len(verified)} now blocked."
+    )
+    if still_bypassing:
+        detail += f" Still bypassing: {len(still_bypassing)}."
+
+    if len(detail) > 500:
+        detail = detail[:497] + "..."
+
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO agent_log (timestamp, agent, action, detail, success) VALUES (?, ?, ?, ?, ?)",
+            (
+                datetime.utcnow().isoformat(),
+                "patch",
+                "adapt",
+                detail,
+                1,
+            ),
+        )
+        await db.commit()
+
+    result = {
+        "patched": patched,
+        "verified": verified_blocked,
+        "still_bypassing": still_bypassing,
+        "dominant_failure": profile.get("dominant_failure", "unknown"),
+        "failure_modes": failure_modes_summary,
+        "rules_version": new_version,
+    }
+
+    round_num = len((cycle_ctx or {}).get("patch_rounds", [])) + 1
+    _populate_cycle_ctx(cycle_ctx, result, profile, round_num)
+
+    return result

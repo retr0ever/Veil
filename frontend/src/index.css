@@ -17,6 +17,14 @@
 }
 
 @font-face {
+  font-family: 'ITC Benguiat Std';
+  src: url('/fonts/itc-benguiat-std/ITCBenguiatStdMediumCn.OTF') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: 'Heartland Script';
   src: url('/fonts/heartland-script/heartland-script.otf') format('opentype');
   font-weight: 400;
@@ -97,6 +105,12 @@ a {
   font-weight: 400;
 }
 
+.font-logo-main {
+  letter-spacing: 0.02em;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+
 .font-hero {
   font-family: 'Heartland Script', 'ITC New Baskerville Roman', serif;
   font-style: normal;
@@ -105,8 +119,8 @@ a {
 
 .nav-link-block {
   font-family: 'ITC New Baskerville Roman', 'Times New Roman', serif;
-  font-weight: 900;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.22em;
-  -webkit-text-stroke: 0.25px currentColor;
+  -webkit-text-stroke: 0.1px currentColor;
 }

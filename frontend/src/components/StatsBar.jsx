@@ -11,9 +11,9 @@ export function StatsBar({ stats }) {
   const gap = circumference - filled
 
   const cards = [
-    { label: 'Attacks Stopped', value: stats.blocked_requests, color: 'text-blocked' },
-    { label: 'Threats Patched', value: stats.threats_blocked, color: 'text-safe' },
-    { label: 'Defence Updates', value: `v${stats.rules_version}`, color: 'text-agent' },
+    { label: 'Techniques Known', value: stats.total_threats, color: 'text-text' },
+    { label: 'Gaps Patched', value: stats.threats_blocked, color: 'text-safe' },
+    { label: 'Rule Version', value: `v${stats.rules_version}`, color: 'text-agent' },
   ]
 
   return (
@@ -37,7 +37,7 @@ export function StatsBar({ stats }) {
             <span className="text-[28px] font-semibold leading-none" style={{ color: ringColor }}>
               {rate}%
             </span>
-            <span className="mt-1 text-[11px] text-muted">protected</span>
+            <span className="mt-1 text-[10px] text-muted leading-tight text-center">of known attacks<br />blocked</span>
           </div>
         </div>
 

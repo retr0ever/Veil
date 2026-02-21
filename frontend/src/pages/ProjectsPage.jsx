@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { getProjectNames } from '../lib/projectNames'
-import { NavBar } from '../components/NavBar'
-import { APP_NAV_LINKS } from '../lib/navLinks'
 
 export function ProjectsPage() {
   const { user, loading: authLoading, logout } = useAuth()
@@ -43,11 +41,7 @@ export function ProjectsPage() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <div className="mx-auto max-w-6xl px-6 pt-4">
-        <NavBar links={APP_NAV_LINKS} activeHref="/app/projects" showDivider />
-      </div>
-
-      <main className="mx-auto max-w-6xl px-6 py-6">
+      <main className="mx-auto max-w-6xl px-6 pb-8 pt-0">
         <div className="mb-5 flex items-center justify-between gap-4">
           <h1 className="text-xl font-semibold">Projects</h1>
           <div className="flex items-center gap-3">

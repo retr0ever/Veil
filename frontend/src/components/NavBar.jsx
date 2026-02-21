@@ -20,7 +20,7 @@ export function NavBar({
   return (
     <>
       <header className={cx('flex flex-wrap items-start justify-between gap-6', className)}>
-        <a href="/" className={cx('font-logo text-[#f6f1f9]', logoSizeClass)}>
+        <a href="/" className={cx('font-logo font-logo-main text-[#f6f1f9]', logoSizeClass)}>
           VEIL.
         </a>
 
@@ -33,7 +33,7 @@ export function NavBar({
                 href={link.href}
                 aria-current={active ? 'page' : undefined}
                 className={cx(
-                  'nav-link-block text-[12px] md:text-[14px] transition-opacity hover:opacity-100',
+                  'nav-link-block text-[16px] md:text-[20px] transition-opacity hover:opacity-100',
                   active ? 'text-[#f6f1f9] opacity-100' : 'text-[#d7d0dd] opacity-90',
                 )}
               >
