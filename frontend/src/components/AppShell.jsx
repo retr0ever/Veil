@@ -469,7 +469,7 @@ export function AppShell({
           </button>
         )
         return (
-          <div className="shrink-0 pb-1 pt-1">
+          <div className="shrink-0 overflow-hidden pb-1 pt-1">
             {collapsed && !isMobile ? (
               <Tooltip text={docsLink.label} sidebarWidth={SIDEBAR_WIDTH_COLLAPSED}>{btn}</Tooltip>
             ) : btn}
