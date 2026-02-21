@@ -8,29 +8,39 @@ const SIDEBAR_WIDTH_MOBILE = 340
 /* ── Inline SVG icon map ─────────────────────────────────── */
 const icons = {
   grid: (
-    <svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="2" width="5.5" height="5.5" rx="1" />
-      <rect x="10.5" y="2" width="5.5" height="5.5" rx="1" />
-      <rect x="2" y="10.5" width="5.5" height="5.5" rx="1" />
-      <rect x="10.5" y="10.5" width="5.5" height="5.5" rx="1" />
+    <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
+      <rect x="2.5" y="2.5" width="5" height="5" rx="2" fill="currentColor" opacity="0.25" />
+      <rect x="10.5" y="2.5" width="5" height="5" rx="2" fill="currentColor" opacity="0.25" />
+      <rect x="2.5" y="10.5" width="5" height="5" rx="2" fill="currentColor" opacity="0.25" />
+      <rect x="10.5" y="10.5" width="5" height="5" rx="2" fill="currentColor" opacity="0.25" />
+      <rect x="2.5" y="2.5" width="5" height="5" rx="2" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="10.5" y="2.5" width="5" height="5" rx="2" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="2.5" y="10.5" width="5" height="5" rx="2" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="10.5" y="10.5" width="5" height="5" rx="2" stroke="currentColor" strokeWidth="1.2" />
     </svg>
   ),
   cpu: (
-    <svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="4" width="10" height="10" rx="1.5" />
-      <rect x="6.5" y="6.5" width="5" height="5" rx="0.5" />
-      <path d="M9 1v3M9 14v3M1 9h3M14 9h3" />
+    <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
+      <circle cx="5.5" cy="6" r="2.2" fill="currentColor" opacity="0.2" stroke="currentColor" strokeWidth="1" />
+      <circle cx="9" cy="6" r="2.2" fill="currentColor" opacity="0.2" stroke="currentColor" strokeWidth="1" />
+      <circle cx="12.5" cy="6" r="2.2" fill="currentColor" opacity="0.2" stroke="currentColor" strokeWidth="1" />
+      <path d="M3 12.5c0-1.5 1.5-3 3-3h6c1.5 0 3 1.5 3 3v1a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 3 13.5v-1z" fill="currentColor" opacity="0.12" stroke="currentColor" strokeWidth="1" />
     </svg>
   ),
   shield: (
-    <svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 1.5L2.5 4.5v4.5c0 4 3 6.5 6.5 7.5 3.5-1 6.5-3.5 6.5-7.5V4.5L9 1.5z" />
+    <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
+      <path d="M9 2L3.5 4.5v4c0 3.8 2.8 6.2 5.5 7.5 2.7-1.3 5.5-3.7 5.5-7.5v-4L9 2z" fill="currentColor" opacity="0.15" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <circle cx="9" cy="8.5" r="1.8" fill="currentColor" opacity="0.3" />
     </svg>
   ),
   settings: (
-    <svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="9" cy="9" r="2.5" />
-      <path d="M14.7 11.1a1.2 1.2 0 0 0 .24 1.32l.04.04a1.44 1.44 0 1 1-2.04 2.04l-.04-.04a1.2 1.2 0 0 0-1.32-.24 1.2 1.2 0 0 0-.72 1.1v.12a1.44 1.44 0 1 1-2.88 0v-.06a1.2 1.2 0 0 0-.78-1.1 1.2 1.2 0 0 0-1.32.24l-.04.04a1.44 1.44 0 1 1-2.04-2.04l.04-.04a1.2 1.2 0 0 0 .24-1.32 1.2 1.2 0 0 0-1.1-.72h-.12a1.44 1.44 0 0 1 0-2.88h.06a1.2 1.2 0 0 0 1.1-.78 1.2 1.2 0 0 0-.24-1.32l-.04-.04a1.44 1.44 0 1 1 2.04-2.04l.04.04a1.2 1.2 0 0 0 1.32.24h.06a1.2 1.2 0 0 0 .72-1.1v-.12a1.44 1.44 0 0 1 2.88 0v.06a1.2 1.2 0 0 0 .72 1.1 1.2 1.2 0 0 0 1.32-.24l.04-.04a1.44 1.44 0 1 1 2.04 2.04l-.04.04a1.2 1.2 0 0 0-.24 1.32v.06a1.2 1.2 0 0 0 1.1.72h.12a1.44 1.44 0 0 1 0 2.88h-.06a1.2 1.2 0 0 0-1.1.72z" />
+    <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
+      <circle cx="9" cy="9" r="5.5" fill="currentColor" opacity="0.1" stroke="currentColor" strokeWidth="1.1" />
+      <circle cx="9" cy="9" r="2" fill="currentColor" opacity="0.3" stroke="currentColor" strokeWidth="1" />
+      <line x1="9" y1="1.5" x2="9" y2="3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="9" y1="14.5" x2="9" y2="16.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="1.5" y1="9" x2="3.5" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="14.5" y1="9" x2="16.5" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   ),
   folder: (
@@ -288,10 +298,10 @@ export function AppShell({
 
       {/* ── Project context block ── */}
       {projectTitle && (!collapsed || isMobile) && (
-        <div className="border-b border-border/40 px-5 py-3.5">
+        <div className="border-b border-border/40 px-6 py-4">
           <a
             href="/app/projects"
-            className="group mb-2 flex items-center gap-1.5 text-[14px] text-muted transition-colors hover:text-text"
+            className="group mb-2 flex items-center gap-2 text-[15px] text-muted transition-colors hover:text-text"
           >
             <span className="shrink-0 transition-transform duration-150 group-hover:-translate-x-0.5">
               <SidebarIcon name="arrow-left" />
@@ -303,9 +313,9 @@ export function AppShell({
               <div className="h-2 w-2 rounded-full bg-safe animate-pulse" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[16px] font-medium text-text leading-snug">{projectTitle}</p>
+              <p className="truncate text-[18px] font-medium text-text leading-snug">{projectTitle}</p>
               {projectUrl && (
-                <p className="mt-0.5 truncate text-[14px] text-muted">{projectUrl}</p>
+                <p className="mt-0.5 truncate text-[15px] text-muted">{projectUrl}</p>
               )}
             </div>
           </div>

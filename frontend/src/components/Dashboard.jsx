@@ -698,103 +698,119 @@ export function Dashboard({ site, activeSection = 'site' }) {
               helpText={SECTION_META.setup.helpText}
             />
 
-            {/* Proxy connection */}
-            <div className="border-b border-border px-6 py-4">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-agent">
-                    <path d="M6.5 10.5L4.5 12.5a2.12 2.12 0 01-3-3L3.5 7.5a2.12 2.12 0 013 0" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                    <path d="M9.5 5.5l2-2a2.12 2.12 0 013 3l-2 2a2.12 2.12 0 01-3 0" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                    <path d="M6 10L10 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-[18px] font-semibold text-text">Proxy connection</h3>
-                  <p className="text-[14px] text-dim">
-                    Route traffic through Veil for real-time classification and filtering
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-bg/80 px-3.5 py-2.5 mb-4">
-                <code className="flex-1 truncate text-[15px] text-text">{proxyUrl}</code>
-                <button
-                  onClick={copyUrl}
-                  className="shrink-0 rounded-md border border-border bg-surface px-2.5 py-1 text-[13px] font-medium text-muted transition-all hover:border-dim hover:text-text"
-                >
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-              </div>
-
-              {/* Diff-style code snippet */}
-              <div className="overflow-hidden rounded-lg border border-border bg-bg">
-                <div className="border-b border-border/50 px-3 py-1.5">
-                  <span className="text-[12px] font-medium tracking-wide text-muted">.env</span>
-                </div>
-                <div className="p-3 text-[14px]">
-                  <div className="flex items-center gap-2 text-blocked/80">
-                    <span className="w-4 text-right text-[12px] text-muted/50">1</span>
-                    <span className="font-semibold text-blocked">-</span>
-                    <span>API_URL={site.target_url}</span>
+            <div className="px-6 py-8 space-y-6">
+              {/* ---- Step 1: Connect ---- */}
+              <div className="rounded-xl border border-border bg-surface/30 p-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-peek/30 bg-peek/10">
+                    <span className="text-[15px] font-bold text-peek">1</span>
                   </div>
-                  <div className="flex items-center gap-2 text-safe/80 mt-0.5">
-                    <span className="w-4 text-right text-[12px] text-muted/50">1</span>
-                    <span className="font-semibold text-safe">+</span>
-                    <span>API_URL={proxyUrl}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Test my defences */}
-            <div className="border-b border-border px-6 py-4">
-              <div className="flex items-start justify-between gap-4 mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface">
-                    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-suspicious">
-                      <path d="M9 1.5L2.5 4.5v4.5c0 4 3 6.5 6.5 7.5 3.5-1 6.5-3.5 6.5-7.5V4.5L9 1.5z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="text-[18px] font-semibold text-text">Test my defences</h3>
-                    <p className="text-[14px] text-dim">
-                      Simulated tests against the detection engine -- not attacks on your site
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-[17px] font-semibold text-text">Connect your app</h3>
+                    <p className="mt-1 text-[14px] text-muted">
+                      Swap your backend URL with Veil's proxy. All traffic flows through Veil first.
                     </p>
+
+                    {/* Copy box */}
+                    <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-bg px-3.5 py-2.5">
+                      <code className="flex-1 truncate text-[14px] text-text">{proxyUrl}</code>
+                      <button
+                        onClick={copyUrl}
+                        className="shrink-0 rounded-md border border-border bg-surface px-2.5 py-1 text-[13px] font-medium text-muted transition-all hover:border-dim hover:text-text"
+                      >
+                        {copied ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+
+                    {/* Diff snippet */}
+                    <div className="mt-3 overflow-hidden rounded-lg border border-border bg-bg">
+                      <div className="border-b border-border/50 px-3 py-1.5">
+                        <span className="text-[11px] font-medium tracking-wider text-muted uppercase">.env</span>
+                      </div>
+                      <div className="p-3 font-mono text-[13px]">
+                        <div className="flex items-center gap-2 text-blocked/70">
+                          <span className="font-semibold text-blocked">-</span>
+                          <span>API_URL={site.target_url}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-safe/70 mt-0.5">
+                          <span className="font-semibold text-safe">+</span>
+                          <span>API_URL={proxyUrl}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <button
-                  onClick={runTests}
-                  disabled={testRunning}
-                  className="shrink-0 rounded-lg bg-text px-4 py-2 text-[15px] font-semibold text-bg transition-opacity hover:opacity-90 disabled:opacity-40"
-                >
-                  {testRunning ? (
-                    <span className="flex items-center gap-2">
-                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-bg/30 border-t-bg" />
-                      Testing...
-                    </span>
-                  ) : 'Run tests'}
-                </button>
               </div>
 
-              {testResults && <TestResultsSummary results={testResults} />}
-            </div>
+              {/* ---- Step 2: Test ---- */}
+              <div className="rounded-xl border border-border bg-surface/30 p-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-poke/30 bg-poke/10">
+                    <span className="text-[15px] font-bold text-poke">2</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-[17px] font-semibold text-text">Test your defences</h3>
+                        <p className="mt-1 text-[14px] text-muted">
+                          Fire simulated attacks at the detection engine to see what gets caught.
+                        </p>
+                      </div>
+                      <img src="/svg/3.png" alt="" className="h-16 w-16 shrink-0 object-contain opacity-60" />
+                    </div>
+                    <button
+                      onClick={runTests}
+                      disabled={testRunning}
+                      className="mt-4 rounded-lg bg-text px-5 py-2.5 text-[14px] font-semibold text-bg transition-opacity hover:opacity-90 disabled:opacity-40"
+                    >
+                      {testRunning ? (
+                        <span className="flex items-center gap-2">
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-bg/30 border-t-bg" />
+                          Testing...
+                        </span>
+                      ) : 'Run tests'}
+                    </button>
 
-            {/* Danger zone -- delete project */}
-            <div className="px-6 py-6">
-              <div className="rounded-xl border border-blocked/20 bg-blocked/[0.03] p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-blocked/20 bg-blocked/10">
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-blocked">
-                        <path d="M3 4.5h10M6.5 4.5V3a1 1 0 011-1h1a1 1 0 011 1v1.5M5 4.5v8a1 1 0 001 1h4a1 1 0 001-1v-8" />
-                      </svg>
+                    {testResults && (
+                      <div className="mt-5">
+                        <TestResultsSummary results={testResults} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ---- Step 3: Improve ---- */}
+              <div className="rounded-xl border border-border bg-surface/30 p-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-patch/30 bg-patch/10">
+                    <span className="text-[15px] font-bold text-patch">3</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-[17px] font-semibold text-text">Let the agents improve</h3>
+                        <p className="mt-1 text-[14px] text-muted">
+                          Head to the Agents tab and run an improvement cycle. Veil's AI agents will discover new attacks, test them, and patch any gaps automatically.
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 -space-x-3">
+                        <img src="/svg/2.png" alt="" className="h-12 w-12 object-contain opacity-50" />
+                        <img src="/svg/4.png" alt="" className="h-12 w-12 object-contain opacity-50" />
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-[18px] font-semibold text-text">Remove project</h3>
-                      <p className="text-[14px] text-dim">
-                        This will stop protecting {site.target_url} and delete all associated data.
-                      </p>
-                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ---- Danger zone ---- */}
+              <div className="pt-4">
+                <div className="flex items-center justify-between rounded-xl border border-border/50 px-5 py-4">
+                  <div>
+                    <p className="text-[14px] font-medium text-muted">Remove project</p>
+                    <p className="mt-0.5 text-[13px] text-muted/70">
+                      Stop protecting {site.target_url} and delete all data.
+                    </p>
                   </div>
                   <button
                     onClick={async () => {
@@ -804,7 +820,7 @@ export function Dashboard({ site, activeSection = 'site' }) {
                         if (res.ok) window.location.href = '/app/projects'
                       } catch {}
                     }}
-                    className="shrink-0 rounded-lg border border-blocked/30 bg-transparent px-4 py-2 text-[15px] font-semibold text-blocked transition-all hover:bg-blocked/10"
+                    className="shrink-0 rounded-lg border border-blocked/30 px-3.5 py-1.5 text-[13px] font-medium text-blocked transition-all hover:bg-blocked/10"
                   >
                     Delete
                   </button>
