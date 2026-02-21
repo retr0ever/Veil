@@ -102,3 +102,11 @@ a {
   font-style: normal;
   font-weight: 400;
 }
+
+.nav-link-block {
+  font-family: 'ITC New Baskerville Roman', 'Times New Roman', serif;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  -webkit-text-stroke: 0.25px currentColor;
+}

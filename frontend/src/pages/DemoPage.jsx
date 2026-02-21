@@ -4,6 +4,8 @@ import { StatsBar } from '../components/StatsBar'
 import { RequestFeed } from '../components/RequestFeed'
 import { AgentLog } from '../components/AgentLog'
 import { ThreatTable } from '../components/ThreatTable'
+import { NavBar } from '../components/NavBar'
+import { PUBLIC_NAV_LINKS } from '../lib/navLinks'
 
 const replayScenarios = [
   {
@@ -66,21 +68,13 @@ export function DemoPage() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <header className="border-b border-border bg-bg/85 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3">
-          <div className="flex items-center gap-3">
-            <span className="font-logo text-[22px] leading-none text-dim">VEIL DEMO</span>
-            <span className="rounded-full border border-safe/40 px-2 py-0.5 text-[11px] text-safe">READ ONLY</span>
-          </div>
-          <div className="flex items-center gap-3 text-[13px]">
-            <a href="/" className="text-dim hover:text-text">Landing</a>
-            <a href="/app/projects" className="text-dim hover:text-text">Projects</a>
-          </div>
-        </div>
-      </header>
+      <div className="mx-auto max-w-7xl px-5 pt-4">
+        <NavBar links={PUBLIC_NAV_LINKS} activeHref="/demo" size="default" showDivider />
+      </div>
 
       <main className="mx-auto max-w-7xl px-5 pb-6 pt-5">
         <section className="mb-4 rounded-2xl border border-border bg-surface p-4">
+          <div className="mb-3 inline-flex rounded-full border border-safe/40 px-2 py-0.5 text-[11px] text-safe">READ ONLY</div>
           <h1 className="text-xl font-semibold tracking-tight">Control Room Demo</h1>
           <p className="mt-1 text-[13px] text-dim">
             Replay known bypass payloads without forwarding to a real backend. Useful for judge walkthroughs.

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getProjectNames } from '../lib/projectNames'
+import { NavBar } from '../components/NavBar'
+import { APP_NAV_LINKS } from '../lib/navLinks'
 
 export function ProjectsPage() {
   const [sites, setSites] = useState([])
@@ -25,20 +27,16 @@ export function ProjectsPage() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <header className="border-b border-border">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div>
-            <p className="font-logo text-[22px] leading-none text-dim">VEIL APP</p>
-            <h1 className="text-xl font-semibold">Projects</h1>
-          </div>
-          <div className="flex items-center gap-3 text-[13px]">
-            <a href="/" className="text-dim hover:text-text">Landing</a>
-            <a href="/app/onboarding" className="rounded-lg bg-text px-3 py-1.5 font-medium text-bg">New project</a>
-          </div>
-        </div>
-      </header>
+      <div className="mx-auto max-w-6xl px-6 pt-4">
+        <NavBar links={APP_NAV_LINKS} activeHref="/app/projects" showDivider />
+      </div>
 
       <main className="mx-auto max-w-6xl px-6 py-6">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <h1 className="text-xl font-semibold">Projects</h1>
+          <a href="/app/onboarding" className="rounded-lg bg-text px-3 py-1.5 text-[14px] font-medium text-bg">New project</a>
+        </div>
+
         {loading && <p className="text-[14px] text-muted">Loading projects...</p>}
         {error && <p className="text-[14px] text-blocked">{error}</p>}
 

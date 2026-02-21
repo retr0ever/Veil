@@ -1,133 +1,126 @@
-const productLinks = [
-  { label: 'Live demo', href: '/demo', desc: 'Read-only control room with replay controls.' },
-  { label: 'SSO auth', href: '/auth', desc: 'GitHub OAuth entry and return flow.' },
-  { label: 'Projects', href: '/app/projects', desc: 'Protected apps with per-project controls.' },
-  { label: 'Onboarding', href: '/app/onboarding', desc: 'Create project and get protected proxy URL.' },
-]
-
-const flow = [
-  {
-    title: 'Stage 1: Fast triage',
-    body: 'Crusoe-hosted small model classifies each request as SAFE, SUSPICIOUS, or MALICIOUS in low latency.',
-    badge: 'Crusoe',
-  },
-  {
-    title: 'Stage 2: Deep verdict',
-    body: 'Suspicious traffic is escalated to Claude for final verdict and attack category before forwarding or blocking.',
-    badge: 'Claude',
-  },
-]
+import { NavBar } from '../components/NavBar'
+import { PUBLIC_NAV_LINKS } from '../lib/navLinks'
 
 const agents = [
-  {
-    name: 'Peek',
-    color: 'text-agent',
-    copy: 'Continuously ingests new SQLi, XSS, SSRF, RCE, and evasion techniques from threat feeds and research.',
-  },
-  {
-    name: 'Poke',
-    color: 'text-suspicious',
-    copy: 'Mutates and replays discovered payloads against Veil to identify real bypasses before attackers do.',
-  },
-  {
-    name: 'Patch',
-    color: 'text-safe',
-    copy: 'Auto-updates prompts and rules from bypass evidence, then verifies fixes in the next red-team cycle.',
-  },
+  { id: 'peek', label: 'PEEK', src: '/svg/2.png', shiftClass: 'translate-y-0' },
+  { id: 'poke', label: 'POKE', src: '/svg/3.png', shiftClass: 'translate-y-[2px]' },
+  { id: 'patch', label: 'PATCH', src: '/svg/4.png', shiftClass: 'translate-y-[4px]' },
 ]
 
 export function LandingPage() {
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-bg text-text">
-      <div className="pointer-events-none absolute -left-24 top-[-120px] h-[360px] w-[360px] rounded-full bg-agent/20 blur-3xl" />
-      <div className="pointer-events-none absolute right-[-120px] top-[220px] h-[320px] w-[320px] rounded-full bg-safe/20 blur-3xl" />
+    <div className="min-h-screen w-full bg-[#1a1322] text-[#f4eff7]">
+      <div className="flex min-h-screen w-full flex-col px-6 pb-16 pt-6 md:px-12 md:pt-8">
+        <NavBar
+          links={PUBLIC_NAV_LINKS}
+          activeHref="/"
+          size="hero"
+          showDivider
+          dividerClassName="mt-5 w-[calc(100%+3rem)] -mx-6 md:w-[calc(100%+6rem)] md:-mx-12"
+        />
 
-      <header className="relative border-b border-border/70 bg-bg/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <span className="font-logo text-[28px] leading-none text-dim">VEIL</span>
-          <nav className="flex items-center gap-3 text-[13px]">
-            <a className="rounded-full border border-border px-3 py-1.5 text-dim hover:text-text" href="/demo">Demo</a>
-            <a className="rounded-full border border-border px-3 py-1.5 text-dim hover:text-text" href="/app/projects">Projects</a>
-            <a className="rounded-full bg-text px-3 py-1.5 font-medium text-bg" href="/app/onboarding">Protect API</a>
-          </nav>
-        </div>
-      </header>
-
-      <main className="relative mx-auto max-w-6xl px-6 pb-16 pt-12">
-        <section className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+        <section className="mt-10 flex flex-col items-start justify-between gap-8 md:flex-row md:items-center">
           <div>
-            <p className="mb-4 inline-flex rounded-full border border-border bg-surface px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-muted">
-              Self-improving AI WAF reverse proxy
-            </p>
-            <h1 className="font-hero max-w-2xl text-6xl leading-[1.02] tracking-tight">
-              Drop-in protection that learns from every bypass attempt.
+            <h1 className="max-w-3xl text-[38px] leading-[1.05] text-[#f8f4fb] md:text-[64px]">
+              The first self-improving firewall
             </h1>
-            <p className="mt-5 max-w-xl text-[16px] leading-relaxed text-dim">
-              Register your backend URL, swap to a Veil proxy URL, and every request is classified before it reaches upstream.
-              Malicious traffic is blocked at the edge.
+            <p className="mt-4 max-w-3xl text-[14px] leading-relaxed tracking-[0.02em] text-[#c8c1d0] md:text-[17px]">
+              Drop-in reverse proxy that blocks malicious requests and patches itself when it fails.
             </p>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <a href="/app/onboarding" className="rounded-xl bg-text px-5 py-2.5 text-[14px] font-semibold text-bg">
-                Launch onboarding
-              </a>
-              <a href="/demo" className="rounded-xl border border-border px-5 py-2.5 text-[14px] text-dim hover:text-text">
-                Open control room demo
-              </a>
-              <a href="/auth" className="text-[14px] text-agent underline-offset-4 hover:underline">
-                Try GitHub SSO flow
-              </a>
+            <div className="mt-5 flex flex-wrap gap-6 text-[12px] tracking-[0.18em] text-[#f0eaf6] md:text-[13px]">
+              <a href="/app/onboarding" className="hover:opacity-80">START PROTECTING</a>
+              <a href="/app/projects" className="hover:opacity-80">OPEN PROJECTS</a>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border bg-surface p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]">
-            <p className="text-[12px] uppercase tracking-[0.16em] text-muted">Request Decision Pipeline</p>
-            <div className="mt-4 space-y-3">
-              {flow.map((item) => (
-                <article key={item.title} className="rounded-xl border border-border/80 bg-bg/60 p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-[15px] font-semibold">{item.title}</h3>
-                    <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[11px] text-dim">{item.badge}</span>
-                  </div>
-                  <p className="text-[13px] leading-relaxed text-dim">{item.body}</p>
-                </article>
-              ))}
-              <div className="rounded-xl border border-safe/30 bg-safe/8 p-4 text-[13px] text-safe">
-                MALICIOUS requests are blocked before upstream. SAFE requests are forwarded and return normal response.
+          <div className="mr-2">
+            <ShieldGlyph />
+          </div>
+        </section>
+
+        <section className="mt-10 w-full md:mt-8">
+          <div className="mx-auto hidden w-[clamp(520px,50vw,960px)] sm:block">
+            <div className="relative aspect-square w-full">
+              <div className="pointer-events-none absolute inset-0 z-20">
+                <svg viewBox="0 0 1000 1000" className="h-full w-full" aria-hidden="true">
+                  <defs>
+                    <path id="agents-arc" d="M8 700 A492 492 0 0 1 992 700" />
+                  </defs>
+                  <text fill="#F4B6EB" style={{ fontFamily: 'Heartland Script, serif', fontSize: '200px' }}>
+                    <textPath
+                      href="#agents-arc"
+                      startOffset="50%"
+                      textAnchor="middle"
+                      textLength="984"
+                      lengthAdjust="spacingAndGlyphs"
+                    >
+                      Meet your agents
+                    </textPath>
+                  </text>
+                </svg>
+              </div>
+
+              <div className="absolute inset-x-0 top-[61%] z-10 -translate-y-1/2">
+                <div className="grid grid-cols-3 items-end justify-items-center gap-x-2">
+                  {agents.map((agent) => (
+                    <article key={agent.id} className="flex flex-col items-center">
+                      <img
+                        src={agent.src}
+                        alt={agent.label}
+                        className={`h-[170px] w-[170px] object-contain lg:h-[190px] lg:w-[190px] ${agent.shiftClass}`}
+                        loading="lazy"
+                      />
+                      <p className="mt-4 text-[18px] tracking-[0.14em] text-[#f6f1f8] lg:text-[20px]">
+                        {agent.label}
+                      </p>
+                    </article>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-        </section>
 
-        <section className="mt-12 grid gap-4 md:grid-cols-3">
-          {agents.map((agent) => (
-            <article key={agent.name} className="rounded-2xl border border-border bg-surface p-5">
-              <p className={`font-mono text-[13px] tracking-wide ${agent.color}`}>{agent.name}</p>
-              <p className="mt-3 text-[14px] leading-relaxed text-dim">{agent.copy}</p>
-            </article>
-          ))}
-        </section>
-
-        <section className="mt-12 rounded-2xl border border-border bg-surface p-6">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-semibold tracking-tight">Hackathon Product Surface</h2>
-              <p className="mt-2 text-[14px] text-dim">All required pages are linked and usable right now.</p>
+          <div className="sm:hidden">
+            <h2 className="font-hero text-center text-[56px] leading-none text-[#F4B6EB]">
+              Meet your agents
+            </h2>
+            <div className="mt-4 grid w-full grid-cols-1 items-end justify-items-center gap-y-8">
+              {agents.map((agent) => (
+                <article key={agent.id} className="flex flex-col items-center">
+                  <img
+                    src={agent.src}
+                    alt={agent.label}
+                    className={`h-[220px] w-[220px] object-contain ${agent.shiftClass}`}
+                    loading="lazy"
+                  />
+                  <p className="mt-5 text-[20px] tracking-[0.14em] text-[#f6f1f8]">
+                    {agent.label}
+                  </p>
+                </article>
+              ))}
             </div>
-            <a href="/app/projects" className="text-[14px] text-agent underline-offset-4 hover:underline">
-              Jump to app
-            </a>
-          </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {productLinks.map((link) => (
-              <a key={link.href} href={link.href} className="rounded-xl border border-border/80 bg-bg/50 p-4 transition hover:border-dim">
-                <p className="text-[15px] font-semibold">{link.label}</p>
-                <p className="mt-1 text-[13px] text-dim">{link.desc}</p>
-                <p className="mt-3 font-mono text-[11px] text-muted">{link.href}</p>
-              </a>
-            ))}
           </div>
         </section>
-      </main>
+      </div>
     </div>
+  )
+}
+
+function ShieldGlyph() {
+  return (
+    <svg width="66" height="66" viewBox="0 0 66 66" fill="none" aria-hidden="true">
+      <path
+        d="M33 6l18 7v15c0 14-8 24-18 30-10-6-18-16-18-30V13l18-7z"
+        stroke="#EDE7F3"
+        strokeWidth="2.2"
+      />
+      <path
+        d="M24 32l6 6 12-12"
+        stroke="#EDE7F3"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }

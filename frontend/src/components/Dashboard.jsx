@@ -5,6 +5,8 @@ import { RequestFeed } from './RequestFeed'
 import { AgentLog } from './AgentLog'
 import { ThreatTable } from './ThreatTable'
 import { BlockRateChart } from './BlockRateChart'
+import { NavBar } from './NavBar'
+import { APP_NAV_LINKS } from '../lib/navLinks'
 
 const tabs = [
   { key: 'live', label: 'Live' },
@@ -33,10 +35,13 @@ export function Dashboard({ site, projectName }) {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg">
+      <div className="px-5 pt-3">
+        <NavBar links={APP_NAV_LINKS} activeHref="/app/projects" size="compact" showDivider />
+      </div>
+
       <div className="flex items-center justify-between border-b border-border px-5 py-3">
         <div className="flex min-w-0 items-center gap-4">
-          <span className="font-logo text-[24px] leading-none text-dim">VEIL</span>
-          <div className="h-4 w-px bg-border" />
+          <span className="rounded-full border border-safe/40 px-2 py-0.5 text-[11px] text-safe">PROJECT</span>
           <div className="min-w-0">
             <p className="truncate text-[14px] font-semibold text-text">{title}</p>
             <p className="truncate text-[12px] text-dim">{site.target_url}</p>
@@ -44,7 +49,6 @@ export function Dashboard({ site, projectName }) {
         </div>
 
         <div className="flex items-center gap-3">
-          <a href="/app/projects" className="text-[12px] text-dim hover:text-text">All projects</a>
           <div className="flex items-center gap-2">
             <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-safe" />
             <span className="text-[11px] font-medium text-safe">PROTECTED</span>
