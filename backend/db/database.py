@@ -1,107 +1,111 @@
 import aiosqlite
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "veil.db")
 
 
+@asynccontextmanager
 async def get_db():
-    db = await aiosqlite.connect(DB_PATH)
+    """Open a short-lived DB connection as a context manager. Always closes cleanly."""
+    db = await aiosqlite.connect(DB_PATH, timeout=30)
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
-    await db.execute("PRAGMA busy_timeout=5000")
-    return db
+    await db.execute("PRAGMA busy_timeout=15000")
+    try:
+        yield db
+    finally:
+        await db.close()
 
 
 async def init_db():
-    db = await get_db()
-    await db.executescript("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            github_id INTEGER NOT NULL UNIQUE,
-            github_login TEXT NOT NULL,
-            avatar_url TEXT,
-            name TEXT,
-            created_at TEXT NOT NULL
-        );
+    async with get_db() as db:
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                github_id INTEGER NOT NULL UNIQUE,
+                github_login TEXT NOT NULL,
+                avatar_url TEXT,
+                name TEXT,
+                created_at TEXT NOT NULL
+            );
 
-        CREATE TABLE IF NOT EXISTS sites (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            site_id TEXT NOT NULL UNIQUE,
-            target_url TEXT NOT NULL,
-            user_id INTEGER REFERENCES users(id),
-            created_at TEXT NOT NULL
-        );
+            CREATE TABLE IF NOT EXISTS sites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                site_id TEXT NOT NULL UNIQUE,
+                target_url TEXT NOT NULL,
+                user_id INTEGER REFERENCES users(id),
+                created_at TEXT NOT NULL
+            );
 
-        CREATE TABLE IF NOT EXISTS threats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            technique_name TEXT NOT NULL,
-            category TEXT NOT NULL DEFAULT 'sqli',
-            source TEXT,
-            raw_payload TEXT NOT NULL,
-            severity TEXT NOT NULL DEFAULT 'medium',
-            discovered_at TEXT NOT NULL,
-            tested_at TEXT,
-            blocked INTEGER NOT NULL DEFAULT 0,
-            patched_at TEXT
-        );
+            CREATE TABLE IF NOT EXISTS threats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                technique_name TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'sqli',
+                source TEXT,
+                raw_payload TEXT NOT NULL,
+                severity TEXT NOT NULL DEFAULT 'medium',
+                discovered_at TEXT NOT NULL,
+                tested_at TEXT,
+                blocked INTEGER NOT NULL DEFAULT 0,
+                patched_at TEXT
+            );
 
-        CREATE TABLE IF NOT EXISTS request_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL,
-            raw_request TEXT NOT NULL,
-            classification TEXT NOT NULL,
-            confidence REAL,
-            classifier TEXT NOT NULL,
-            blocked INTEGER NOT NULL DEFAULT 0,
-            attack_type TEXT,
-            response_time_ms REAL
-        );
+            CREATE TABLE IF NOT EXISTS request_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                raw_request TEXT NOT NULL,
+                classification TEXT NOT NULL,
+                confidence REAL,
+                classifier TEXT NOT NULL,
+                blocked INTEGER NOT NULL DEFAULT 0,
+                attack_type TEXT,
+                response_time_ms REAL
+            );
 
-        CREATE TABLE IF NOT EXISTS agent_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL,
-            agent TEXT NOT NULL,
-            action TEXT NOT NULL,
-            detail TEXT,
-            success INTEGER NOT NULL DEFAULT 1
-        );
+            CREATE TABLE IF NOT EXISTS agent_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                agent TEXT NOT NULL,
+                action TEXT NOT NULL,
+                detail TEXT,
+                success INTEGER NOT NULL DEFAULT 1
+            );
 
-        CREATE TABLE IF NOT EXISTS rules (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            version INTEGER NOT NULL DEFAULT 1,
-            crusoe_prompt TEXT NOT NULL,
-            claude_prompt TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            updated_by TEXT NOT NULL DEFAULT 'system'
-        );
-    """)
-    await db.commit()
-
-    # Migrate: add user_id to sites if missing (existing DBs)
-    cursor = await db.execute("PRAGMA table_info(sites)")
-    columns = [row[1] for row in await cursor.fetchall()]
-    if "user_id" not in columns:
-        await db.execute("ALTER TABLE sites ADD COLUMN user_id INTEGER REFERENCES users(id)")
+            CREATE TABLE IF NOT EXISTS rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                version INTEGER NOT NULL DEFAULT 1,
+                crusoe_prompt TEXT NOT NULL,
+                claude_prompt TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                updated_by TEXT NOT NULL DEFAULT 'system'
+            );
+        """)
         await db.commit()
 
-    # seed initial rules if empty
-    cursor = await db.execute("SELECT COUNT(*) FROM rules")
-    count = (await cursor.fetchone())[0]
-    if count == 0:
-        await db.execute("""
-            INSERT INTO rules (version, crusoe_prompt, claude_prompt, updated_at, updated_by)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            1,
-            INITIAL_CRUSOE_PROMPT,
-            INITIAL_CLAUDE_PROMPT,
-            datetime.utcnow().isoformat(),
-            "system"
-        ))
-        await db.commit()
+        # Migrate: add user_id to sites if missing (existing DBs)
+        cursor = await db.execute("PRAGMA table_info(sites)")
+        columns = [row[1] for row in await cursor.fetchall()]
+        if "user_id" not in columns:
+            await db.execute("ALTER TABLE sites ADD COLUMN user_id INTEGER REFERENCES users(id)")
+            await db.commit()
 
-    await db.close()
+        # seed initial rules if empty
+        cursor = await db.execute("SELECT COUNT(*) FROM rules")
+        count = (await cursor.fetchone())[0]
+        if count == 0:
+            await db.execute("""
+                INSERT INTO rules (version, crusoe_prompt, claude_prompt, updated_at, updated_by)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                1,
+                INITIAL_CRUSOE_PROMPT,
+                INITIAL_CLAUDE_PROMPT,
+                datetime.utcnow().isoformat(),
+                "system"
+            ))
+            await db.commit()
 
 
 INITIAL_CRUSOE_PROMPT = """You are a web application firewall (WAF) classifier. Analyse the incoming HTTP request and classify it as one of:

@@ -52,13 +52,12 @@ async def get_current_user(request: Request) -> dict | None:
     user_id = read_session_cookie(token)
     if user_id is None:
         return None
-    db = await get_db()
-    cursor = await db.execute(
-        "SELECT id, github_id, github_login, avatar_url, name FROM users WHERE id = ?",
-        (user_id,),
-    )
-    row = await cursor.fetchone()
-    await db.close()
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id, github_id, github_login, avatar_url, name FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
     if not row:
         return None
     return {
@@ -206,23 +205,22 @@ async def auth_github_callback(code: str):
     name = gh_user.get("name", "")
 
     # Upsert user
-    db = await get_db()
-    cursor = await db.execute("SELECT id FROM users WHERE github_id = ?", (github_id,))
-    existing = await cursor.fetchone()
-    if existing:
-        user_id = existing[0]
-        await db.execute(
-            "UPDATE users SET github_login = ?, avatar_url = ?, name = ? WHERE id = ?",
-            (github_login, avatar_url, name, user_id),
-        )
-    else:
-        cursor = await db.execute(
-            "INSERT INTO users (github_id, github_login, avatar_url, name, created_at) VALUES (?, ?, ?, ?, ?)",
-            (github_id, github_login, avatar_url, name, datetime.utcnow().isoformat()),
-        )
-        user_id = cursor.lastrowid
-    await db.commit()
-    await db.close()
+    async with get_db() as db:
+        cursor = await db.execute("SELECT id FROM users WHERE github_id = ?", (github_id,))
+        existing = await cursor.fetchone()
+        if existing:
+            user_id = existing[0]
+            await db.execute(
+                "UPDATE users SET github_login = ?, avatar_url = ?, name = ? WHERE id = ?",
+                (github_login, avatar_url, name, user_id),
+            )
+        else:
+            cursor = await db.execute(
+                "INSERT INTO users (github_id, github_login, avatar_url, name, created_at) VALUES (?, ?, ?, ?, ?)",
+                (github_id, github_login, avatar_url, name, datetime.utcnow().isoformat()),
+            )
+            user_id = cursor.lastrowid
+        await db.commit()
 
     # Set session cookie and redirect to frontend
     response = RedirectResponse("/", status_code=302)
@@ -265,23 +263,21 @@ class ClassifyRequest(BaseModel):
 
 # --- Helpers ---
 async def get_current_rules():
-    db = await get_db()
-    cursor = await db.execute("SELECT crusoe_prompt, claude_prompt, version FROM rules ORDER BY version DESC LIMIT 1")
-    row = await cursor.fetchone()
-    await db.close()
+    async with get_db() as db:
+        cursor = await db.execute("SELECT crusoe_prompt, claude_prompt, version FROM rules ORDER BY version DESC LIMIT 1")
+        row = await cursor.fetchone()
     if row:
         return {"crusoe_prompt": row[0], "claude_prompt": row[1], "version": row[2]}
     return None
 
 
 async def get_stats_data():
-    db = await get_db()
-    total = (await (await db.execute("SELECT COUNT(*) FROM request_log")).fetchone())[0]
-    blocked = (await (await db.execute("SELECT COUNT(*) FROM request_log WHERE blocked = 1")).fetchone())[0]
-    threats = (await (await db.execute("SELECT COUNT(*) FROM threats")).fetchone())[0]
-    threats_blocked = (await (await db.execute("SELECT COUNT(*) FROM threats WHERE blocked = 1")).fetchone())[0]
-    rules_version = (await (await db.execute("SELECT MAX(version) FROM rules")).fetchone())[0] or 1
-    await db.close()
+    async with get_db() as db:
+        total = (await (await db.execute("SELECT COUNT(*) FROM request_log")).fetchone())[0]
+        blocked = (await (await db.execute("SELECT COUNT(*) FROM request_log WHERE blocked = 1")).fetchone())[0]
+        threats = (await (await db.execute("SELECT COUNT(*) FROM threats")).fetchone())[0]
+        threats_blocked = (await (await db.execute("SELECT COUNT(*) FROM threats WHERE blocked = 1")).fetchone())[0]
+        rules_version = (await (await db.execute("SELECT MAX(version) FROM rules")).fetchone())[0] or 1
     return {
         "total_requests": total,
         "blocked_requests": blocked,
@@ -317,23 +313,22 @@ async def classify_request(raw_request: str):
         blocked = True
 
     # Log
-    db = await get_db()
-    await db.execute(
-        """INSERT INTO request_log (timestamp, raw_request, classification, confidence, classifier, blocked, attack_type, response_time_ms)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            datetime.utcnow().isoformat(),
-            raw_request[:500],
-            classification,
-            confidence,
-            final_result.get("classifier", "unknown"),
-            1 if blocked else 0,
-            final_result.get("attack_type", "none"),
-            final_result.get("response_time_ms", 0),
-        ),
-    )
-    await db.commit()
-    await db.close()
+    async with get_db() as db:
+        await db.execute(
+            """INSERT INTO request_log (timestamp, raw_request, classification, confidence, classifier, blocked, attack_type, response_time_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                datetime.utcnow().isoformat(),
+                raw_request[:500],
+                classification,
+                confidence,
+                final_result.get("classifier", "unknown"),
+                1 if blocked else 0,
+                final_result.get("attack_type", "none"),
+                final_result.get("response_time_ms", 0),
+            ),
+        )
+        await db.commit()
 
     # Broadcast to dashboard
     await ws_manager.broadcast({
@@ -373,27 +368,24 @@ async def add_site(req: AddSiteRequest, request: Request):
     if not parsed.scheme or not parsed.netloc:
         return JSONResponse(status_code=400, content={"error": "Invalid URL"})
 
-    db = await get_db()
+    async with get_db() as db:
+        # Check if already registered by this user
+        cursor = await db.execute(
+            "SELECT site_id, target_url, created_at FROM sites WHERE target_url = ? AND user_id = ?",
+            (target_url, user["id"]),
+        )
+        existing = await cursor.fetchone()
+        if existing:
+            return {"site_id": existing[0], "target_url": existing[1], "created_at": existing[2]}
 
-    # Check if already registered by this user
-    cursor = await db.execute(
-        "SELECT site_id, target_url, created_at FROM sites WHERE target_url = ? AND user_id = ?",
-        (target_url, user["id"]),
-    )
-    existing = await cursor.fetchone()
-    if existing:
-        await db.close()
-        return {"site_id": existing[0], "target_url": existing[1], "created_at": existing[2]}
+        site_id = secrets.token_urlsafe(6)
+        now = datetime.utcnow().isoformat()
 
-    site_id = secrets.token_urlsafe(6)
-    now = datetime.utcnow().isoformat()
-
-    await db.execute(
-        "INSERT INTO sites (site_id, target_url, user_id, created_at) VALUES (?, ?, ?, ?)",
-        (site_id, target_url, user["id"], now),
-    )
-    await db.commit()
-    await db.close()
+        await db.execute(
+            "INSERT INTO sites (site_id, target_url, user_id, created_at) VALUES (?, ?, ?, ?)",
+            (site_id, target_url, user["id"], now),
+        )
+        await db.commit()
 
     return {"site_id": site_id, "target_url": target_url, "created_at": now}
 
@@ -405,13 +397,12 @@ async def list_sites(request: Request):
     if not user:
         return JSONResponse(status_code=401, content={"error": "Not authenticated"})
 
-    db = await get_db()
-    cursor = await db.execute(
-        "SELECT site_id, target_url, created_at FROM sites WHERE user_id = ? ORDER BY created_at DESC",
-        (user["id"],),
-    )
-    rows = await cursor.fetchall()
-    await db.close()
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT site_id, target_url, created_at FROM sites WHERE user_id = ? ORDER BY created_at DESC",
+            (user["id"],),
+        )
+        rows = await cursor.fetchall()
     return [{"site_id": r[0], "target_url": r[1], "created_at": r[2]} for r in rows]
 
 
@@ -420,10 +411,9 @@ async def list_sites(request: Request):
 async def proxy(site_id: str, path: str, request: Request):
     """Reverse proxy: classifies the request, then forwards to the real backend or blocks."""
     # Look up site
-    db = await get_db()
-    cursor = await db.execute("SELECT target_url FROM sites WHERE site_id = ?", (site_id,))
-    row = await cursor.fetchone()
-    await db.close()
+    async with get_db() as db:
+        cursor = await db.execute("SELECT target_url FROM sites WHERE site_id = ?", (site_id,))
+        row = await cursor.fetchone()
 
     if not row:
         return JSONResponse(status_code=404, content={"error": "Site not found"})
@@ -511,10 +501,9 @@ async def get_stats():
 
 @app.get("/api/threats")
 async def get_threats():
-    db = await get_db()
-    cursor = await db.execute("SELECT * FROM threats ORDER BY discovered_at DESC")
-    rows = await cursor.fetchall()
-    await db.close()
+    async with get_db() as db:
+        cursor = await db.execute("SELECT * FROM threats ORDER BY discovered_at DESC")
+        rows = await cursor.fetchall()
     return [
         {
             "id": r[0],
@@ -534,10 +523,9 @@ async def get_threats():
 
 @app.get("/api/agents")
 async def get_agent_log():
-    db = await get_db()
-    cursor = await db.execute("SELECT * FROM agent_log ORDER BY timestamp DESC LIMIT 50")
-    rows = await cursor.fetchall()
-    await db.close()
+    async with get_db() as db:
+        cursor = await db.execute("SELECT * FROM agent_log ORDER BY timestamp DESC LIMIT 50")
+        rows = await cursor.fetchall()
     return [
         {
             "id": r[0],
@@ -553,10 +541,9 @@ async def get_agent_log():
 
 @app.get("/api/requests")
 async def get_requests():
-    db = await get_db()
-    cursor = await db.execute("SELECT * FROM request_log ORDER BY timestamp DESC LIMIT 100")
-    rows = await cursor.fetchall()
-    await db.close()
+    async with get_db() as db:
+        cursor = await db.execute("SELECT * FROM request_log ORDER BY timestamp DESC LIMIT 100")
+        rows = await cursor.fetchall()
     return [
         {
             "id": r[0],
@@ -575,10 +562,9 @@ async def get_requests():
 
 @app.get("/api/rules")
 async def get_rules():
-    db = await get_db()
-    cursor = await db.execute("SELECT version, updated_at, updated_by FROM rules ORDER BY version DESC")
-    rows = await cursor.fetchall()
-    await db.close()
+    async with get_db() as db:
+        cursor = await db.execute("SELECT version, updated_at, updated_by FROM rules ORDER BY version DESC")
+        rows = await cursor.fetchall()
     return [{"version": r[0], "updated_at": r[1], "updated_by": r[2]} for r in rows]
 
 
