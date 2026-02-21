@@ -41,6 +41,7 @@ go get github.com/gorilla/mux@v1.8.1
 go get github.com/gorilla/websocket@v1.5.3
 go get github.com/mattn/go-sqlite3@v1.14.24
 go get golang.org/x/oauth2@latest
+go get gopkg.in/yaml.v3@latest
 go mod tidy
 ```
 
@@ -785,6 +786,519 @@ git commit -m "docs: add approach documentation for merged Go backend"
 
 ---
 
+## Phase 8: CrowdSec Hub Integration
+
+### Task 24: CrowdSec Hub types
+
+**Files:**
+- Create: `go-backend/internal/crowdsec/types.go`
+
+**What it must have:**
+
+```go
+package crowdsec
+
+import "time"
+
+// Scenario represents a CrowdSec leaky bucket scenario
+type Scenario struct {
+    Type        string            `yaml:"type"`        // leaky, trigger, conditional
+    Name        string            `yaml:"name"`        // author/name
+    Description string            `yaml:"description"`
+    Filter      string            `yaml:"filter"`      // CrowdSec expr (we extract hints from this)
+    GroupBy     string            `yaml:"groupby"`
+    Capacity    int               `yaml:"capacity"`
+    LeakSpeed   string            `yaml:"leakspeed"`   // "10s", "0.5s"
+    Blackhole   string            `yaml:"blackhole"`   // "5m", "1m"
+    Distinct    string            `yaml:"distinct"`
+    CacheSize   int               `yaml:"cache_size"`
+    Reprocess   bool              `yaml:"reprocess"`
+    Debug       bool              `yaml:"debug"`
+    Format      string            `yaml:"format"`
+    Labels      Labels            `yaml:"labels"`
+    Data        []DataSource      `yaml:"data"`
+    References  []string          `yaml:"references"`
+}
+
+// AppSecRule represents a CrowdSec WAF-style rule
+type AppSecRule struct {
+    Name        string   `yaml:"name"`
+    Description string   `yaml:"description"`
+    Rules       []Rule   `yaml:"rules"`
+    Labels      Labels   `yaml:"labels"`
+}
+
+// Rule is a single matching block (may contain AND conditions)
+type Rule struct {
+    And       []Condition `yaml:"and"`       // compound AND conditions
+    Zones     []string    `yaml:"zones"`     // simple single condition
+    Transform []string    `yaml:"transform"`
+    Match     *Match      `yaml:"match"`
+    Variables []string    `yaml:"variables"`
+}
+
+// Condition is a single zone/match/transform condition within an AND block
+type Condition struct {
+    Zones     []string `yaml:"zones"`
+    Transform []string `yaml:"transform"`
+    Match     Match    `yaml:"match"`
+    Variables []string `yaml:"variables"`
+}
+
+type Match struct {
+    Type  string `yaml:"type"`  // equals, contains, endsWith, startsWith, regex
+    Value string `yaml:"value"`
+}
+
+// Collection bundles scenarios, appsec-rules, and other collections
+type Collection struct {
+    Name          string   `yaml:"name"`
+    Description   string   `yaml:"description"`
+    Author        string   `yaml:"author"`
+    Tags          []string `yaml:"tags"`
+    Parsers       []string `yaml:"parsers"`
+    Scenarios     []string `yaml:"scenarios"`
+    Collections   []string `yaml:"collections"`
+    AppSecRules   []string `yaml:"appsec-rules"`
+    AppSecConfigs []string `yaml:"appsec-configs"`
+    Contexts      []string `yaml:"contexts"`
+}
+
+// AppSecConfig ties AppSec rules together with remediation policy
+type AppSecConfig struct {
+    Name               string   `yaml:"name"`
+    DefaultRemediation string   `yaml:"default_remediation"` // ban, captcha, log
+    InbandRules        []string `yaml:"inband_rules"`        // glob patterns
+    OutofbandRules     []string `yaml:"outofband_rules"`
+}
+
+type Labels struct {
+    Remediation    bool     `yaml:"remediation"`
+    Confidence     int      `yaml:"confidence"`
+    Spoofable      int      `yaml:"spoofable"`
+    Classification []string `yaml:"classification"` // MITRE ATT&CK, CVE, CWE
+    Behavior       string   `yaml:"behavior"`       // http:crawl, http:exploit, etc.
+    Service        string   `yaml:"service"`
+    Label          string   `yaml:"label"`
+    Type           string   `yaml:"type"`           // exploit, scan, bruteforce
+}
+
+type DataSource struct {
+    SourceURL string `yaml:"source_url"`
+    DestFile  string `yaml:"dest_file"`
+    Type      string `yaml:"type"` // string, regex
+}
+
+// HubIndex represents the .index.json top-level structure
+type HubIndex struct {
+    AppSecConfigs map[string]HubItem `json:"appsec-configs"`
+    AppSecRules   map[string]HubItem `json:"appsec-rules"`
+    Collections   map[string]HubItem `json:"collections"`
+    Contexts      map[string]HubItem `json:"contexts"`
+    Parsers       map[string]HubItem `json:"parsers"`
+    Postoverflows map[string]HubItem `json:"postoverflows"`
+    Scenarios     map[string]HubItem `json:"scenarios"`
+}
+
+type HubItem struct {
+    Author      string            `json:"author"`
+    Content     string            `json:"content"` // base64-encoded YAML
+    Description string            `json:"description"`
+    Labels      map[string]any    `json:"labels"`
+    Path        string            `json:"path"`
+    Version     string            `json:"version"`
+    Versions    map[string]HubVer `json:"versions"`
+}
+
+type HubVer struct {
+    Deprecated bool   `json:"deprecated"`
+    Digest     string `json:"digest"`
+}
+
+// VeilMatcher is the converted form used by Veil's classification pipeline
+type VeilMatcher struct {
+    HubName   string   // source CrowdSec rule name
+    Zone      string   // uri, uri_full, headers, args, body, method, filenames
+    Variable  string   // specific header/arg name (empty for whole zone)
+    Transform []string // lowercase, urldecode, b64decode
+    MatchType string   // equals, contains, endsWith, startsWith, regex
+    Value     string
+}
+
+// VeilScenarioConfig is the converted behavioral scenario config
+type VeilScenarioConfig struct {
+    HubName     string
+    Description string
+    Capacity    int
+    LeakSpeed   time.Duration
+    Blackhole   time.Duration
+    Behavior    string
+    Service     string
+    Remediation bool
+    Confidence  int
+}
+```
+
+**Step 1: Write types.go**
+
+**Step 2: Build check**
+
+```
+go build ./internal/crowdsec/
+```
+
+**Step 3: Commit**
+
+```
+git add go-backend/internal/crowdsec/types.go
+git commit -m "feat: add CrowdSec Hub YAML type definitions"
+```
+
+---
+
+### Task 25: Hub client (fetch and cache .index.json)
+
+**Files:**
+- Create: `go-backend/internal/crowdsec/hub.go`
+
+**What it must have:**
+
+- `HubClient` struct with `http.Client`, index cache, cache TTL (1 hour default)
+- `NewHubClient()` — constructor, configurable index URL via `CROWDSEC_HUB_URL` env var (default: `https://raw.githubusercontent.com/crowdsecurity/hub/master/.index.json`)
+- `FetchIndex(ctx) (*HubIndex, error)` — download and parse .index.json, cache in memory
+- `GetAppSecRule(name string) (*AppSecRule, error)` — decode base64 content, parse YAML
+- `GetScenario(name string) (*Scenario, error)` — decode base64 content, parse YAML (handle multi-document YAML with `---` separators)
+- `GetCollection(name string) (*Collection, error)` — decode base64 content, parse YAML
+- `ResolveCollection(name string) (rules []AppSecRule, scenarios []Scenario, error)` — recursively resolve a collection, following nested collection references, returning all leaf AppSec rules and scenarios
+- `ListCollections() []string` — list all available collection names
+- `SearchCollections(tags []string) []Collection` — find collections by tag (http, wordpress, nginx, etc.)
+- Thread-safe with `sync.RWMutex` on the cache
+
+```go
+type HubClient struct {
+    indexURL   string
+    client     *http.Client
+    mu         sync.RWMutex
+    index      *HubIndex
+    lastFetch  time.Time
+    cacheTTL   time.Duration
+}
+
+func NewHubClient() *HubClient {
+    return &HubClient{
+        indexURL: envOr("CROWDSEC_HUB_URL",
+            "https://raw.githubusercontent.com/crowdsecurity/hub/master/.index.json"),
+        client:   &http.Client{Timeout: 30 * time.Second},
+        cacheTTL: 1 * time.Hour,
+    }
+}
+```
+
+**Step 1: Write hub.go**
+
+**Step 2: Build check**
+
+```
+go build ./internal/crowdsec/
+```
+
+**Step 3: Commit**
+
+```
+git add go-backend/internal/crowdsec/hub.go
+git commit -m "feat: add CrowdSec Hub client with .index.json caching"
+```
+
+---
+
+### Task 26: Rule converter (CrowdSec → Veil matchers)
+
+**Files:**
+- Create: `go-backend/internal/crowdsec/converter.go`
+- Create: `go-backend/internal/crowdsec/matcher.go`
+
+**converter.go must have:**
+
+- `ConvertAppSecRule(rule *AppSecRule) []VeilMatcher` — convert a CrowdSec AppSec rule into Veil matchers
+  - Each condition becomes a `VeilMatcher`
+  - AND conditions are grouped (returned as a slice that must all match)
+  - Map zones: URI→uri, URI_FULL→uri_full, HEADERS→headers, ARGS→args, BODY→body, METHOD→method, FILENAMES→filenames
+  - Map transforms: lowercase, uppercase, urldecode, b64decode
+  - Map match types: equals, contains, endsWith, startsWith, regex
+- `ConvertScenario(scenario *Scenario) (*VeilScenarioConfig, error)` — convert CrowdSec scenario to behavioral config
+  - Parse `leakspeed` duration string ("10s", "0.5s")
+  - Parse `blackhole` duration string ("5m", "1m")
+  - Extract behavior and service from labels
+
+**matcher.go must have:**
+
+- `EvalMatcher(m *VeilMatcher, req *http.Request) bool` — evaluate a single matcher against an HTTP request
+  - Extract the target zone from the request (path, headers, query, body, method)
+  - Apply transforms in order
+  - Apply match type comparison
+- `EvalMatcherGroup(matchers []VeilMatcher, req *http.Request) bool` — evaluate AND group (all must match)
+- `EvalAppSecRule(matchers [][]VeilMatcher, req *http.Request) bool` — evaluate full rule (OR of AND groups)
+
+```go
+func EvalMatcher(m *VeilMatcher, req *http.Request) bool {
+    value := extractZone(m.Zone, m.Variable, req)
+    for _, t := range m.Transform {
+        value = applyTransform(t, value)
+    }
+    switch m.MatchType {
+    case "equals":
+        return value == m.Value
+    case "contains":
+        return strings.Contains(value, m.Value)
+    case "endsWith":
+        return strings.HasSuffix(value, m.Value)
+    case "startsWith":
+        return strings.HasPrefix(value, m.Value)
+    case "regex":
+        // pre-compiled regex stored elsewhere
+    }
+    return false
+}
+
+func extractZone(zone, variable string, req *http.Request) string {
+    switch zone {
+    case "uri":
+        return req.URL.Path
+    case "uri_full":
+        return req.URL.RequestURI()
+    case "method":
+        return req.Method
+    case "headers":
+        return req.Header.Get(variable)
+    case "args":
+        return req.URL.Query().Get(variable)
+    case "body":
+        // read and cache body
+    }
+    return ""
+}
+```
+
+**Step 1: Write converter.go and matcher.go**
+
+**Step 2: Build check**
+
+```
+go build ./internal/crowdsec/
+```
+
+**Step 3: Commit**
+
+```
+git add go-backend/internal/crowdsec/converter.go go-backend/internal/crowdsec/matcher.go
+git commit -m "feat: add CrowdSec-to-Veil rule converter and matcher engine"
+```
+
+---
+
+### Task 27: Hub rules database table + CRUD
+
+**Files:**
+- Modify: `go-backend/internal/db/database.go`
+
+**What to add:**
+
+New table `hub_rules` in the `Init()` function:
+
+```sql
+CREATE TABLE IF NOT EXISTS hub_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hub_name TEXT NOT NULL UNIQUE,
+    hub_type TEXT NOT NULL,
+    version TEXT,
+    yaml_content TEXT,
+    imported_at TEXT DEFAULT (datetime('now')),
+    site_id TEXT,
+    active BOOLEAN DEFAULT 1
+)
+```
+
+New CRUD functions:
+- `InsertHubRule(hubName, hubType, version, yamlContent, siteID string) error`
+- `GetActiveHubRules(hubType string) ([]HubRuleRow, error)` — get all active rules of a type
+- `GetHubRule(hubName string) (*HubRuleRow, error)` — get by name
+- `DeactivateHubRule(hubName string) error`
+- `IsHubRuleImported(hubName string) bool` — check if already imported (avoid re-importing)
+
+```go
+type HubRuleRow struct {
+    ID          int
+    HubName     string
+    HubType     string
+    Version     string
+    YAMLContent string
+    ImportedAt  string
+    SiteID      string
+    Active      bool
+}
+```
+
+**Step 1: Add table creation to Init()**
+
+**Step 2: Add CRUD functions**
+
+**Step 3: Build check**
+
+```
+go build ./internal/db/
+```
+
+**Step 4: Commit**
+
+```
+git add go-backend/internal/db/database.go
+git commit -m "feat: add hub_rules table for CrowdSec Hub imports"
+```
+
+---
+
+### Task 28: Learn agent (Genkit Flow)
+
+**Files:**
+- Create: `go-backend/internal/agents/learn.go`
+
+**What it must have:**
+
+- `genkit.DefineFlow(g, "learn-hub", func(ctx, input LearnInput) (*LearnOutput, error) { ... })`
+- `LearnInput` struct: SiteID, RecentPaths []string (paths seen in last 5 min)
+- `LearnOutput` struct: ImportedRules int, ImportedScenarios int, DetectedAppType string
+
+**Flow logic:**
+
+1. **Detect app type** from recent request paths:
+   - `/wp-admin`, `/wp-login.php`, `/wp-content` → WordPress
+   - `/administrator`, `/components/com_` → Joomla
+   - `/vendor/`, `/artisan` → Laravel
+   - `/admin/`, `/static/admin/` → Django
+   - `/confluence/`, `/jira/` → Atlassian
+   - Generic fallback: use `crowdsecurity/appsec-virtual-patching` (covers CVE vpatches)
+2. **Select collections** from Hub index based on detected type + always include base HTTP scenarios
+3. **Resolve collections** recursively to get leaf AppSec rules and scenarios
+4. **Skip already-imported rules** (check `hub_rules` table)
+5. **Convert and store** new rules:
+   - AppSec rules → `VeilMatcher` groups, stored in DB as `hub_rules`
+   - Scenarios → `VeilScenarioConfig`, stored in DB as `hub_rules`
+6. **Hot-reload** — call `pipeline.ReloadHubRules()` to inject new matchers into the running regex classifier
+7. **Log** to agent_log table and broadcast via WebSocket
+
+```go
+type LearnInput struct {
+    SiteID      string   `json:"site_id"`
+    RecentPaths []string `json:"recent_paths"`
+}
+
+type LearnOutput struct {
+    ImportedRules     int    `json:"imported_rules"`
+    ImportedScenarios int    `json:"imported_scenarios"`
+    DetectedAppType   string `json:"detected_app_type"`
+    CollectionsUsed   []string `json:"collections_used"`
+}
+```
+
+**Step 1: Write learn.go**
+
+**Step 2: Build check**
+
+```
+go build ./internal/agents/
+```
+
+**Step 3: Commit**
+
+```
+git add go-backend/internal/agents/learn.go
+git commit -m "feat: add Learn agent for dynamic CrowdSec Hub rule import"
+```
+
+---
+
+### Task 29: Integrate Hub matchers into classification pipeline
+
+**Files:**
+- Modify: `go-backend/internal/classifier/pipeline.go`
+- Modify: `go-backend/internal/agents/loop.go`
+
+**pipeline.go changes:**
+
+- Add `hubMatchers [][]VeilMatcher` field to Pipeline struct
+- Add `hubScenarios []VeilScenarioConfig` field
+- Add `ReloadHubRules(matchers [][]VeilMatcher, scenarios []VeilScenarioConfig)` method (thread-safe with `sync.RWMutex`)
+- In `Classify()`, after regex Stage 1 returns SAFE, also check Hub matchers:
+
+```go
+// After regex check
+if result.ClassificationLabel == "SAFE" {
+    // Check CrowdSec Hub matchers (AppSec rules converted to Go matchers)
+    if hubResult := p.checkHubMatchers(req); hubResult != nil {
+        return hubResult // MALICIOUS with attack_type from Hub rule
+    }
+}
+```
+
+**loop.go changes:**
+
+- Add Learn flow to the agent loop on a slower cadence:
+  - Every 5 minutes (vs 30 seconds for Peek/Poke/Patch)
+  - Or: every 10th iteration of the main loop
+- Pass recent request paths from the request log to the Learn agent
+- After Learn completes, call `pipeline.ReloadHubRules()`
+
+**Step 1: Update pipeline.go**
+
+**Step 2: Update loop.go**
+
+**Step 3: Build full project**
+
+```
+go build ./...
+```
+
+**Step 4: Commit**
+
+```
+git add go-backend/internal/classifier/pipeline.go go-backend/internal/agents/loop.go
+git commit -m "feat: integrate CrowdSec Hub matchers into classification pipeline"
+```
+
+---
+
+### Task 30: Add Hub API endpoints
+
+**Files:**
+- Modify: `go-backend/handlers.go`
+
+**New endpoints:**
+
+- `GET /api/hub/collections` — list available CrowdSec Hub collections (from cached index)
+- `GET /api/hub/imported` — list imported Hub rules from DB (active rules)
+- `POST /api/hub/import` — manually trigger import of a specific collection `{"collection": "crowdsecurity/appsec-wordpress", "site_id": "..."}`
+- `DELETE /api/hub/rules/{name}` — deactivate an imported rule
+- `POST /api/agents/learn/run` — manually trigger the Learn agent
+
+**Step 1: Add endpoint handlers**
+
+**Step 2: Mount routes in main.go**
+
+**Step 3: Build check**
+
+```
+go build ./...
+```
+
+**Step 4: Commit**
+
+```
+git add go-backend/handlers.go go-backend/main.go
+git commit -m "feat: add Hub API endpoints for CrowdSec rule management"
+```
+
+---
+
 ## Task Dependency Graph
 
 ```
@@ -795,15 +1309,24 @@ Phase 4 (prompts):     [14] (independent)
 Phase 5 (agents):      [2,13,14] → [15] → [16,17,18] (parallel) → [19]
 Phase 6 (server):      [all above] → [20] → [21]
 Phase 7 (integration): [21] → [22] → [23]
+Phase 8 (hub):         [24] → [25] → [26] → [27] → [28] → [29] → [30]
+                       [24,25,26] can start after Phase 1 (need only go.mod)
+                       [27] depends on Task 2 (database layer)
+                       [28] depends on [15] (agent types) + [24,25,26]
+                       [29] depends on [13] (pipeline) + [26] (converter)
+                       [30] depends on [21] (handlers) + [28] (learn agent)
 ```
 
 **Parallelizable tasks:**
 - Tasks 3,4,5,6,7 can all run in parallel
 - Tasks 10,11,12 can all run in parallel
 - Tasks 16,17,18 can all run in parallel
+- Tasks 24,25,26 can start in parallel with Phase 2-4
 - Task 14 (prompts) is fully independent
 
 **Critical path:** 1 → 2 → 3 → 13 → 15 → 19 → 20 → 21 → 22
+
+**Hub integration can be developed in parallel with Phases 2-5**, merging at Phase 6 (server) and Phase 7 (integration).
 
 ---
 
@@ -823,3 +1346,5 @@ Phase 7 (integration): [21] → [22] → [23]
 | `.worktrees/go-fabric-hybrid/go-backend/` | Worktree | Behavioral engine, decisions, prompts |
 | `docs/plans/2026-02-21-go-backend-design.md` | Main repo | Approved design doc |
 | `SPEC-veil-next.md` | Main repo | Full v2 spec with CrowdSec analysis |
+| CrowdSec Hub `.index.json` | [GitHub](https://raw.githubusercontent.com/crowdsecurity/hub/master/.index.json) | Hub index with base64-encoded YAML rules |
+| CrowdSec Hub repo | [GitHub](https://github.com/crowdsecurity/hub) | MIT-licensed detection rules, scenarios, AppSec rules |

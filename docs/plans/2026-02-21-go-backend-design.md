@@ -393,6 +393,11 @@ go-backend/
 │   │   ├── patch.go                  -- Genkit Flow: update rules
 │   │   ├── loop.go                   -- Background orchestration
 │   │   └── types.go                  -- Flow input/output types
+│   ├── crowdsec/
+│   │   ├── hub.go                   -- Hub client: fetch .index.json, cache
+│   │   ├── types.go                 -- Scenario, AppSecRule, Collection structs
+│   │   ├── converter.go             -- CrowdSec → Veil rule conversion
+│   │   └── matcher.go               -- Zone extraction, transforms, matching
 │   ├── proxy/
 │   │   └── proxy.go                  -- Enhanced reverse proxy
 │   ├── db/
@@ -416,6 +421,7 @@ go-backend/
 | `github.com/gorilla/mux` | HTTP routing |
 | `github.com/gorilla/websocket` | Real-time dashboard |
 | `golang.org/x/oauth2` | GitHub OAuth |
+| `gopkg.in/yaml.v3` | CrowdSec Hub YAML parsing |
 | `net/http` (stdlib) | Crusoe API calls |
 
 ## 9. Environment Variables
@@ -436,6 +442,7 @@ go-backend/
 | `GITHUB_CLIENT_SECRET` | OAuth app secret | (required) |
 | `SESSION_SECRET` | Cookie signing key | (required) |
 | `VEIL_PROXY_URL` | Poke agent target | `http://localhost:8080` |
+| `CROWDSEC_HUB_URL` | Hub index URL | `https://raw.githubusercontent.com/crowdsecurity/hub/master/.index.json` |
 | `GENKIT_ENV` | Genkit mode | (set to `dev` for Dev UI) |
 
 ## 10. What's Novel / Differentiators
@@ -447,8 +454,130 @@ go-backend/
 5. **Fabric prompt patterns**: Battle-tested prompt structure (39k stars) adapted for security classification.
 6. **Self-improving prompts**: The Patch flow updates prompts stored as markdown files and rule versions in the DB.
 7. **Go performance**: The reverse proxy, behavioral engine, and regex classifier all run in pure Go with zero network calls for the fast path.
+8. **CrowdSec Hub integration**: Dynamic import of MIT-licensed detection rules from the CrowdSec community Hub — AppSec rules become compiled Go matchers, scenarios become behavioral engine configs. A "Learn" agent auto-detects the protected app type and imports relevant collections.
 
-## 11. Existing Worktrees (Reference)
+## 11. CrowdSec Hub Integration
+
+Veil dynamically imports detection rules from the [CrowdSec Hub](https://hub.crowdsec.net/) (MIT-licensed). This bridges CrowdSec's community-maintained rule library with Veil's AI-powered classification.
+
+### Hub Format
+
+The Hub organizes rules into **collections** (bundles), **scenarios** (leaky bucket detectors), and **AppSec rules** (WAF-style HTTP request matchers). All items are available via a single `.index.json` at the repository root with base64-encoded YAML content.
+
+### What We Import
+
+| CrowdSec Type | Veil Mapping | Value |
+|---|---|---|
+| **AppSec Rules** | Compiled regex/match patterns for Stage 1 | Direct WAF rules: zone matching (URI, HEADERS, ARGS, BODY) with transforms (lowercase, urldecode) |
+| **Scenarios** | Behavioral engine leaky bucket configs | Bucket parameters (capacity, leakspeed, groupby, blackhole) for new behavioral scenarios |
+| **Collections** | Rule bundles selected per-site | App-specific detection (WordPress, Confluence, PHP CGI, etc.) |
+
+### AppSec Rule → Regex Conversion
+
+CrowdSec AppSec rules inspect HTTP request zones with match conditions:
+
+```yaml
+# CrowdSec format
+rules:
+  - zones: [URI]
+    transform: [lowercase]
+    match:
+      type: endsWith
+      value: .env
+```
+
+Veil converts these into compiled Go matchers:
+
+```go
+type HubMatcher struct {
+    Zone      string           // "uri", "headers", "args", "body", "method"
+    Variable  string           // header name or arg name (optional)
+    Transform []string         // "lowercase", "urldecode", "b64decode"
+    MatchType string           // "equals", "contains", "endsWith", "startsWith", "regex"
+    Value     string           // match target
+    Compiled  *regexp.Regexp   // pre-compiled for regex type
+}
+```
+
+Match types map to:
+- `equals` → `strings.EqualFold` (after transforms)
+- `contains` → `strings.Contains`
+- `endsWith` → `strings.HasSuffix`
+- `startsWith` → `strings.HasPrefix`
+- `regex` → `regexp.MustCompile`
+
+AND conditions require all sub-matchers to match. Multiple top-level rules are OR'd.
+
+### Scenario → Behavioral Config Conversion
+
+CrowdSec leaky bucket scenarios define parameters Veil feeds into its behavioral engine:
+
+```yaml
+# CrowdSec format
+type: leaky
+capacity: 5
+leakspeed: 10s
+groupby: evt.Meta.source_ip
+blackhole: 1m
+filter: "evt.Meta.log_type == 'ssh_failed-auth'"
+```
+
+Veil extracts the bucket parameters and maps the filter to request properties:
+
+```go
+type HubScenario struct {
+    Name        string
+    Description string
+    Capacity    int
+    LeakSpeed   time.Duration
+    GroupBy     string        // always "source_ip" for Veil
+    Blackhole   time.Duration
+    Behavior    string        // from labels.behavior
+    Service     string        // from labels.service
+    Remediation bool
+    Confidence  int
+}
+```
+
+### Learn Agent (Genkit Flow)
+
+A new `learn-hub` Genkit Flow that:
+
+1. **Detects app type** — analyzes recent request patterns (paths like `/wp-admin`, `/api/v1`, `/.env`) to identify what framework/CMS the protected site runs
+2. **Selects collections** — queries the Hub index for relevant collections (e.g., `crowdsecurity/appsec-wordpress` for WordPress sites)
+3. **Imports rules** — fetches and parses AppSec rules and scenarios from the selected collections
+4. **Converts to Veil format** — transforms CrowdSec YAML into compiled matchers and behavioral configs
+5. **Hot-reloads** — injects new rules into the running regex classifier and behavioral engine without restart
+
+The Learn agent runs on a longer cycle than Peek/Poke/Patch (every 5 minutes vs 30 seconds) and only re-fetches the Hub index if the cached version is older than 1 hour.
+
+### Directory Structure Addition
+
+```
+go-backend/internal/crowdsec/
+├── hub.go        -- Hub client: fetch .index.json, cache, list items
+├── types.go      -- Go structs for Scenario, AppSecRule, Collection, AppSecConfig
+├── converter.go  -- Convert CrowdSec rules → Veil matchers + behavioral configs
+└── matcher.go    -- HubMatcher evaluation engine (zone extraction, transforms, matching)
+```
+
+### New Database Table
+
+```sql
+-- Track imported CrowdSec Hub rules
+hub_rules (
+    id INTEGER PRIMARY KEY,
+    hub_name TEXT NOT NULL UNIQUE,  -- e.g., "crowdsecurity/vpatch-CVE-2023-22515"
+    hub_type TEXT NOT NULL,         -- "appsec-rule", "scenario", "collection"
+    version TEXT,
+    yaml_content TEXT,              -- raw YAML for reference
+    imported_at TEXT,
+    site_id TEXT,                   -- NULL = global, otherwise site-specific
+    active BOOLEAN DEFAULT 1
+)
+```
+
+## 12. Existing Worktrees (Reference)
 
 The four prototype worktrees remain available for reference:
 - `.worktrees/go-langchaingo` — LangChainGo approach
