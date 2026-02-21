@@ -20,30 +20,30 @@ export function AuthPage() {
 
   return (
     <div className="flex min-h-[calc(100vh-140px)] items-center justify-center px-6">
-      <div className="w-full max-w-[480px]">
+      <div className="w-full max-w-[600px]">
         {/* Card */}
         <div className="rounded-2xl border border-border/60 bg-surface/60 px-8 py-10 backdrop-blur-sm md:px-10 md:py-12">
-          {/* Shield icon */}
+          {/* Vibes icon */}
           <div className="mb-6 flex justify-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-agent/20 bg-agent/5">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-agent">
-                <path d="M12 2L3 7v5c0 5.25 3.75 9.75 9 11 5.25-1.25 9-5.75 9-11V7l-9-5z" />
-                <path d="M9 12l2 2 4-4" />
-              </svg>
-            </div>
+            <img
+              src="/svg/vibes.png"
+              alt="Veil vibes"
+              className="h-21 w-21 object-contain"
+              loading="lazy"
+            />
           </div>
 
           <h1 className="text-center text-[28px] font-semibold leading-tight text-text md:text-[32px]">
             Sign in to Veil
           </h1>
-          <p className="mx-auto mt-3 max-w-[320px] text-center text-[16px] leading-relaxed text-dim">
+          <p className="mx-auto mt-3 max-w-[440px] text-center text-[16px] leading-relaxed text-dim">
             Connect your GitHub account to start protecting your APIs.
           </p>
 
           {/* GitHub button */}
           <a
             href="/auth/github"
-            className="mt-8 flex items-center justify-center gap-3 rounded-xl bg-[#f0a9e6] px-5 py-4 transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+            className="mt-8 flex w-full items-center justify-center gap-3 rounded-xl bg-[#f0a9e6] px-5 py-4 transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
             style={{ color: '#1a1322' }}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="#1a1322" className="shrink-0">
@@ -67,7 +67,7 @@ export function AuthPage() {
           {/* Demo button */}
           <a
             href="/demo"
-            className="flex items-center justify-center rounded-xl border border-border px-5 py-3.5 text-[17px] font-medium text-dim transition duration-150 hover:border-dim hover:text-text"
+            className="flex w-full items-center justify-center rounded-xl border border-border px-5 py-3.5 text-[17px] font-medium text-dim transition duration-150 hover:border-dim hover:text-text"
           >
             Try the demo instead
           </a>
