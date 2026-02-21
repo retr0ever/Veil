@@ -40,6 +40,8 @@ export function Dashboard({ site, projectName, user, logout }) {
   const [activeTab, setActiveTab] = useState('site')
   const [testRunning, setTestRunning] = useState(false)
   const [testResults, setTestResults] = useState(null)
+  const [cycleRunning, setCycleRunning] = useState(false)
+  const [lastCycle, setLastCycle] = useState(null)
 
   const proxyUrl = `${window.location.origin}/p/${site.site_id}`
   const title = projectName || site.target_url
@@ -52,7 +54,16 @@ export function Dashboard({ site, projectName, user, logout }) {
   }
 
   const triggerCycle = async () => {
-    await fetch('/api/agents/cycle', { method: 'POST' })
+    setCycleRunning(true)
+    setLastCycle(null)
+    try {
+      const res = await fetch('/api/agents/cycle', { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        setLastCycle(data)
+      }
+    } catch {}
+    setCycleRunning(false)
   }
 
   const runTests = async () => {
@@ -255,11 +266,45 @@ export function Dashboard({ site, projectName, user, logout }) {
               </p>
               <button
                 onClick={triggerCycle}
-                className="shrink-0 rounded-md border border-border bg-transparent px-3 py-1.5 text-[12px] text-muted transition-colors hover:border-dim hover:text-text"
+                disabled={cycleRunning}
+                className="shrink-0 rounded-md border border-border bg-transparent px-3 py-1.5 text-[12px] text-muted transition-colors hover:border-dim hover:text-text disabled:opacity-50"
               >
-                Run Improvement Cycle
+                {cycleRunning ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-agent" />
+                    Cycle running...
+                  </span>
+                ) : 'Run Improvement Cycle'}
               </button>
             </div>
+
+            {lastCycle && (
+              <div className="border-b border-border bg-surface-2/30 px-5 py-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg width="14" height="14" viewBox="0 0 16 16" className="text-safe shrink-0">
+                    <path d="M6.5 12L2 7.5l1.4-1.4L6.5 9.2l6.1-6.1L14 4.5z" fill="currentColor" />
+                  </svg>
+                  <span className="text-[13px] font-medium text-text">Cycle #{lastCycle.cycle_id} complete</span>
+                </div>
+                <div className="flex flex-wrap gap-3 text-[12px]">
+                  <span className="text-muted">Discovered: <span className="font-mono text-agent">{lastCycle.discovered}</span></span>
+                  <span className="text-muted">Bypasses: <span className="font-mono text-suspicious">{lastCycle.bypasses}</span></span>
+                  {lastCycle.patch_rounds?.map((r, i) => (
+                    <span key={i} className="text-muted">
+                      Round {r.round}: <span className="font-mono text-safe">{r.patched} patched</span>
+                      {r.still_bypassing > 0 && <span className="font-mono text-blocked">, {r.still_bypassing} still evading</span>}
+                    </span>
+                  ))}
+                  {lastCycle.strategies_used?.length > 0 && (
+                    <span className="text-muted">
+                      Strategies: {lastCycle.strategies_used.map(s => (
+                        <span key={s} className="ml-1 inline-block rounded bg-agent/10 px-1.5 py-0.5 text-[10px] text-agent">{s.replace(/_/g, ' ')}</span>
+                      ))}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="grid min-h-[500px] grid-cols-1 lg:grid-cols-[1fr_340px]">
               <div className="min-h-0 border-b border-border lg:border-b-0 lg:border-r">
