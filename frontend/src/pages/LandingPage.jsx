@@ -1,10 +1,6 @@
 import { useState } from 'react'
 
-const agents = [
-  { id: 'peek', label: 'PEEK', src: '/svg/2.png', shiftClass: 'translate-y-0' },
-  { id: 'poke', label: 'POKE', src: '/svg/3.png', shiftClass: 'translate-y-[2px]' },
-  { id: 'patch', label: 'PATCH', src: '/svg/4.png', shiftClass: 'translate-y-[4px]' },
-]
+const AGENT_LABELS = ['PEEK', 'POKE', 'PATCH']
 
 const HOW_IT_WORKS_STEPS = [
   {
@@ -152,7 +148,10 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="mt-12 w-[calc(100%+3rem)] -mx-6 md:mt-10 md:w-[calc(100%+6rem)] md:-mx-12">
+        <section
+          className="relative mt-12 w-[calc(100%+3rem)] -mx-6 bg-[#1a1322] bg-cover bg-center bg-no-repeat md:mt-10 md:w-[calc(100%+6rem)] md:-mx-12"
+          style={{ backgroundImage: "url('/images/rays.png')" }}
+        >
           <div className="h-px w-full bg-[#848188]/70" />
           <div className="px-6 md:px-12">
           <div className="mx-auto hidden w-[clamp(520px,50vw,960px)] sm:block">
@@ -177,20 +176,20 @@ export function LandingPage() {
               </div>
 
               <div className="absolute inset-x-0 top-[61%] z-10 -translate-y-1/2">
-                <div className="grid grid-cols-3 items-end justify-items-center gap-x-2">
-                  {agents.map((agent) => (
-                    <article key={agent.id} className="flex flex-col items-center">
-                      <img
-                        src={agent.src}
-                        alt={agent.label}
-                        className={`h-[170px] w-[170px] object-contain lg:h-[190px] lg:w-[190px] ${agent.shiftClass}`}
-                        loading="lazy"
-                      />
-                      <p className="mt-4 text-[18px] tracking-[0.14em] text-[#f6f1f8] lg:text-[20px]">
-                        {agent.label}
+                <div className="mx-auto w-[96%]">
+                  <img
+                    src="/svg/gang.svg"
+                    alt="PEEK, POKE, and PATCH agents"
+                    className="h-auto w-full object-contain"
+                    loading="lazy"
+                  />
+                  <div className="mt-3 grid grid-cols-3 gap-x-0 text-center">
+                    {AGENT_LABELS.map((label) => (
+                      <p key={label} className="text-[18px] tracking-[0.14em] text-[#f6f1f8] lg:text-[20px]">
+                        {label}
                       </p>
-                    </article>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -200,20 +199,20 @@ export function LandingPage() {
             <h2 className="font-hero text-center text-[56px] leading-none text-[#F4B6EB]">
               Meet your agents
             </h2>
-            <div className="mt-4 grid w-full grid-cols-1 items-end justify-items-center gap-y-8">
-              {agents.map((agent) => (
-                <article key={agent.id} className="flex flex-col items-center">
-                  <img
-                    src={agent.src}
-                    alt={agent.label}
-                    className={`h-[220px] w-[220px] object-contain ${agent.shiftClass}`}
-                    loading="lazy"
-                  />
-                  <p className="mt-5 text-[20px] tracking-[0.14em] text-[#f6f1f8]">
-                    {agent.label}
+            <div className="mt-4">
+              <img
+                src="/svg/gang.svg"
+                alt="PEEK, POKE, and PATCH agents"
+                className="mx-auto h-auto w-full max-w-[540px] object-contain"
+                loading="lazy"
+              />
+              <div className="mt-4 grid grid-cols-3 gap-x-0 text-center">
+                {AGENT_LABELS.map((label) => (
+                  <p key={label} className="text-[20px] tracking-[0.14em] text-[#f6f1f8]">
+                    {label}
                   </p>
-                </article>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
           </div>
