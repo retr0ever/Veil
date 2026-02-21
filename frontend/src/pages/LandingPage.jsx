@@ -19,22 +19,37 @@ export function LandingPage() {
           dividerClassName="mt-5 w-[calc(100%+3rem)] -mx-6 md:w-[calc(100%+6rem)] md:-mx-12"
         />
 
-        <section className="mt-10 flex flex-col items-start justify-between gap-8 md:flex-row md:items-center">
-          <div>
-            <h1 className="max-w-3xl text-[38px] leading-[1.05] text-[#f8f4fb] md:text-[64px]">
-              The first self-improving firewall
-            </h1>
-            <p className="mt-4 max-w-3xl text-[14px] leading-relaxed tracking-[0.02em] text-[#c8c1d0] md:text-[17px]">
-              Drop-in reverse proxy that blocks malicious requests and patches itself when it fails.
-            </p>
-            <div className="mt-5 flex flex-wrap gap-6 text-[12px] tracking-[0.18em] text-[#f0eaf6] md:text-[13px]">
-              <a href="/app/onboarding" className="hover:opacity-80">START PROTECTING</a>
-              <a href="/app/projects" className="hover:opacity-80">OPEN PROJECTS</a>
-            </div>
-          </div>
+        <section className="w-[calc(100%+3rem)] -mx-6 bg-[radial-gradient(circle_at_top_left,rgba(106,124,191,0.2),transparent_50%),radial-gradient(circle_at_bottom_right,rgba(137,86,171,0.22),transparent_56%),#1a1322] md:w-[calc(100%+6rem)] md:-mx-12">
+          <div className="mx-auto max-w-[1600px] px-2 py-24 md:px-4 md:py-36">
+            <div className="grid items-center gap-10 md:flex md:items-center md:justify-between md:gap-20">
+              <div className="max-w-[760px]">
+                <h1 className="text-[44px] font-semibold leading-[1.08] text-[#f8f4fb] md:text-[56px]">
+                  The first self-improving firewall.
+                </h1>
+                <p className="mt-6 text-[18px] leading-[1.6] text-[#cbc4d2] md:text-[20px]">
+                  Drop-in reverse proxy that blocks malicious requests before they reach your backend.
+                  When something bypasses, Veil red-teams itself and auto-patches its detection rules, then verifies the fix by replay.
+                </p>
+              </div>
 
-          <div className="mr-2">
-            <ShieldGlyph />
+              <div className="w-full md:w-[470px] md:shrink-0">
+                <a
+                  href="/app/projects"
+                  className="block rounded-[12px] bg-[#f1b461] px-8 py-7 text-[#1b1525] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                >
+                  <span className="block text-[34px] leading-[0.9] tracking-[0.06em] md:text-[38px]">OPEN</span>
+                  <span className="mt-1 block text-[34px] leading-[0.9] tracking-[0.06em] md:text-[38px]">PROJECTS</span>
+                </a>
+
+                <a
+                  href="/app/onboarding"
+                  className="mt-5 block rounded-[12px] bg-[#f0a9e6] px-8 py-7 text-[#1b1525] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                >
+                  <span className="block text-[34px] leading-[0.9] tracking-[0.06em] md:text-[38px]">START</span>
+                  <span className="mt-1 block text-[34px] leading-[0.9] tracking-[0.06em] md:text-[38px]">PROTECTING</span>
+                </a>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -103,24 +118,5 @@ export function LandingPage() {
         </section>
       </div>
     </div>
-  )
-}
-
-function ShieldGlyph() {
-  return (
-    <svg width="66" height="66" viewBox="0 0 66 66" fill="none" aria-hidden="true">
-      <path
-        d="M33 6l18 7v15c0 14-8 24-18 30-10-6-18-16-18-30V13l18-7z"
-        stroke="#EDE7F3"
-        strokeWidth="2.2"
-      />
-      <path
-        d="M24 32l6 6 12-12"
-        stroke="#EDE7F3"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   )
 }
