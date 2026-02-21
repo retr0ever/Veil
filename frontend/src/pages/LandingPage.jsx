@@ -8,28 +8,20 @@ const AGENT_ITEMS = [
 
 const AGENT_DETAILS = {
   all: {
-    label: 'AGENTS',
-    title: 'Three agents. One loop.',
+    heading: 'AGENTS: Three agents. One loop.',
     body: 'Peek discovers new attack techniques, Poke stress-tests Veil with variants, and Patch updates the rules - then verifies the fix by replaying the bypass.',
-    outputs: 'Threat intel • Bypass reports • Rule updates',
   },
   peek: {
-    label: 'AGENT: PEEK',
-    title: 'Scout / Threat Discovery',
+    heading: 'PEEK: Scout / Threat Discovery',
     body: 'Continuously collects emerging attack techniques and patterns, labels them by category and severity, and stores them in the threat intelligence database with sources.',
-    outputs: 'Threat intel • Sources • Severity',
   },
   poke: {
-    label: 'AGENT: POKE',
-    title: 'Red Team / Bypass Hunter',
+    heading: 'POKE: Red Team / Bypass Hunter',
     body: 'Generates attack variations and fires them at Veil’s own classifier. Logs what gets blocked vs. what slips through, and escalates any bypass as a report for patching.',
-    outputs: 'Mutations • Bypass reports • Replay traces',
   },
   patch: {
-    label: 'AGENT: PATCH',
-    title: 'Adaptation / Auto-Patcher',
+    heading: 'PATCH: Adaptation / Auto-Patcher',
     body: 'Analyzes why a bypass worked, updates the detection prompts/rules, redeploys immediately, and verifies the fix by re-running the exact same attack until it’s blocked.',
-    outputs: 'Prompt updates • Redeploys • Verified blocks',
   },
 }
 
@@ -225,7 +217,10 @@ export function LandingPage() {
                       className="h-auto w-full object-contain"
                       loading="lazy"
                     />
-                    <div className="absolute inset-0 grid grid-cols-3">
+                    <div
+                      className="absolute inset-0 grid grid-cols-3"
+                      onMouseLeave={() => setActiveAgent('all')}
+                    >
                       {AGENT_ITEMS.map((agent) => (
                         <button
                           key={agent.id}
@@ -238,6 +233,19 @@ export function LandingPage() {
                         />
                       ))}
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="absolute inset-x-[6%] top-[82%] z-0">
+                <div className="rounded-[6px] border border-[#848188]/70 bg-[#21192b] px-6 py-6 md:px-7 md:py-7">
+                  <div className={`transition-opacity duration-200 ${agentPanelVisible ? 'opacity-100' : 'opacity-0'}`}>
+                    <h3 className="text-[22px] leading-tight text-[#f4eff7] md:text-[24px]">
+                      {activeAgentDetails.heading}
+                    </h3>
+                    <p className="mt-3 text-[17px] leading-[1.6] text-[#d0c8da] md:text-[18px]">
+                      {activeAgentDetails.body}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -269,23 +277,16 @@ export function LandingPage() {
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="mx-auto mt-9 w-full max-w-[860px] px-1 md:mt-10">
-            <div className="rounded-[6px] border border-[#848188]/70 bg-[#21192b] px-6 py-6 md:px-7 md:py-7">
-              <div className={`transition-opacity duration-200 ${agentPanelVisible ? 'opacity-100' : 'opacity-0'}`}>
-                <p className="text-[13px] tracking-[0.14em] text-[#a9a0b6]">
-                  {activeAgentDetails.label}
-                </p>
-                <h3 className="mt-2 text-[22px] leading-tight text-[#f4eff7] md:text-[24px]">
-                  {activeAgentDetails.title}
-                </h3>
-                <p className="mt-3 text-[17px] leading-[1.6] text-[#d0c8da] md:text-[18px]">
-                  {activeAgentDetails.body}
-                </p>
-                <p className="mt-4 text-[13px] tracking-[0.08em] text-[#aaa1b7]">
-                  Outputs: {activeAgentDetails.outputs}
-                </p>
+              <div className="mx-auto mt-6 w-full max-w-[860px] px-1">
+              <div className="rounded-[6px] border border-[#848188]/70 bg-[#21192b] px-6 py-6">
+                <div className={`transition-opacity duration-200 ${agentPanelVisible ? 'opacity-100' : 'opacity-0'}`}>
+                  <h3 className="text-[22px] leading-tight text-[#f4eff7]">
+                    {activeAgentDetails.heading}
+                  </h3>
+                  <p className="mt-3 text-[17px] leading-[1.6] text-[#d0c8da]">
+                    {activeAgentDetails.body}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
