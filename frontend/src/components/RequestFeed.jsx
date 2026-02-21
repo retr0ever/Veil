@@ -10,15 +10,20 @@ export function RequestFeed({ requests }) {
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-        <span className="text-muted text-[12px] font-medium">Activity feed</span>
+        <span className="text-muted text-[12px] font-medium">Classification feed</span>
         {safeCount > 0 && (
           <span className="text-[11px] text-safe">{safeCount} safe request{safeCount !== 1 ? 's' : ''} passed</span>
         )}
       </div>
+      <div className="px-4 py-2 border-b border-border/40 bg-surface">
+        <p className="text-[11px] text-dim leading-relaxed">
+          All classifications shown, including agent self-testing.
+        </p>
+      </div>
       <div className="flex-1 overflow-y-auto">
         {requests.length === 0 && (
           <div className="px-4 py-8 text-muted text-center text-[13px]">
-            Waiting for traffic...
+            No classifications yet. Connect your site or check the Agents tab.
           </div>
         )}
         {notable.map((req, i) => {

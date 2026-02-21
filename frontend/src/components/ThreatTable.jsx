@@ -36,18 +36,24 @@ export function ThreatTable() {
 
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+      <div className="px-5 py-4 border-b border-border bg-surface">
+        <p className="text-[13px] text-dim leading-relaxed">
+          Attack techniques Veil has discovered and tested. <span className="text-safe font-medium">Patched</span> = Veil
+          blocks it. <span className="text-blocked font-medium">Exposed</span> = detection gap the agents are working on.
+        </p>
+      </div>
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-        <span className="text-muted text-[12px] font-medium">Threat intelligence</span>
+        <span className="text-muted text-[12px] font-medium">Threat library</span>
         {threats.length > 0 && (
           <span className="text-[11px] text-dim">
-            {threats.length} threat{threats.length !== 1 ? 's' : ''} found, {patched.length} patched
+            {threats.length} technique{threats.length !== 1 ? 's' : ''} discovered, {patched.length} patched
           </span>
         )}
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {threats.length === 0 && (
           <div className="py-8 text-muted text-center text-[13px]">
-            No threats discovered yet.
+            No threats discovered yet. Run an improvement cycle to begin scanning.
           </div>
         )}
         {sorted.map((t) => (
@@ -63,6 +69,15 @@ export function ThreatTable() {
                 <p className="mt-0.5 text-[12px] text-dim">{humaniseAttackType(t.category)}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {t.source && (
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                    t.source === 'ai' || t.source === 'ai-generated'
+                      ? 'bg-agent/10 text-agent'
+                      : 'bg-border/40 text-muted'
+                  }`}>
+                    {t.source === 'ai' || t.source === 'ai-generated' ? 'AI-generated' : 'OWASP Top 10'}
+                  </span>
+                )}
                 <span className={`text-[11px] font-semibold capitalize ${severityLabels[t.severity] || 'text-muted'}`}>
                   {t.severity}
                 </span>

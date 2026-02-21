@@ -152,6 +152,29 @@ export function relativeTime(timestamp) {
   return `${diffDays}d ago`
 }
 
+export function humaniseAgentRole(agent) {
+  const roles = {
+    peek: { name: 'Scout', verb: 'Discovers new attack patterns' },
+    poke: { name: 'Red Team', verb: 'Tests if Veil can block them' },
+    patch: { name: 'Adapt', verb: 'Analyses gaps and updates rules' },
+  }
+  return roles[agent] || { name: agent, verb: '' }
+}
+
+export function humaniseRuleSource(version) {
+  if (version <= 1) return 'Initial'
+  return 'AI patch'
+}
+
+export function humaniseEmptyState(context) {
+  const messages = {
+    feed: 'No classifications yet. Connect your site or check the Agents tab.',
+    agents: 'Agents have not run yet. Start an improvement cycle to see activity.',
+    threats: 'No threats discovered yet. Run an improvement cycle to begin scanning.',
+  }
+  return messages[context] || 'No data yet.'
+}
+
 function extractNumber(text) {
   if (!text) return null
   const match = text.match(/(\d+)/)
