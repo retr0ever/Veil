@@ -171,7 +171,7 @@ export function LandingPage() {
                       textLength="984"
                       lengthAdjust="spacingAndGlyphs"
                     >
-                      Meet your agents
+                      Meet your agents!
                     </textPath>
                   </text>
                 </svg>
