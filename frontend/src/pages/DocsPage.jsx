@@ -182,35 +182,10 @@ function formatLine(text) {
     .replace(/`([^`]+)`/g, '<code class="rounded bg-bg px-1.5 py-0.5 font-mono text-[13px] text-agent">$1</code>')
 }
 
-export function DocsPage() {
-  const { user, loading: authLoading, logout } = useAuth()
-  const [openSections, setOpenSections] = useState(new Set(['overview']))
-
-  const toggle = (id) => {
-    setOpenSections((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  if (authLoading) {
-    return (
-      <AppShell links={APP_SIDEBAR_LINKS} activeKey="docs" user={user} logout={logout} pageTitle="Documentation">
-        <LoadingSpinner />
-      </AppShell>
-    )
-  }
-
-  if (!user) {
-    window.location.href = '/auth'
-    return null
-  }
-
+function DocsContent({ openSections, toggle }) {
   return (
-    <AppShell links={APP_SIDEBAR_LINKS} activeKey="docs" user={user} logout={logout} pageTitle="Documentation">
-      <div className="px-8 py-10 lg:px-12">
+    <div className="px-8 py-10 lg:px-12">
+      <div className="mx-auto max-w-3xl">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-[32px] font-semibold text-text">Documentation</h1>
@@ -231,6 +206,44 @@ export function DocsPage() {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+export function DocsPage({ public: isPublic }) {
+  const { user, loading: authLoading, logout } = useAuth()
+  const [openSections, setOpenSections] = useState(new Set(['overview']))
+
+  const toggle = (id) => {
+    setOpenSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Public docs — no sidebar, no auth required
+  if (isPublic) {
+    return <DocsContent openSections={openSections} toggle={toggle} />
+  }
+
+  if (authLoading) {
+    return (
+      <AppShell links={APP_SIDEBAR_LINKS} activeKey="docs" user={user} logout={logout} pageTitle="Documentation">
+        <LoadingSpinner />
+      </AppShell>
+    )
+  }
+
+  if (!user) {
+    window.location.href = '/auth'
+    return null
+  }
+
+  return (
+    <AppShell links={APP_SIDEBAR_LINKS} activeKey="docs" user={user} logout={logout} pageTitle="Documentation">
+      <DocsContent openSections={openSections} toggle={toggle} />
     </AppShell>
   )
 }

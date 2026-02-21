@@ -50,7 +50,7 @@ function NotFoundPage() {
  * APP routes (/app/*) -- each page wraps itself in <AppShell> with the sidebar.
  */
 
-const PUBLIC_ROUTES = ['/', '/demo', '/auth']
+const PUBLIC_ROUTES = ['/', '/demo', '/docs', '/auth']
 
 function App() {
   const pathname = normalizePath(window.location.pathname)
@@ -66,6 +66,7 @@ function App() {
   if (pathname === '/')                   page = <LandingPage />
   else if (pathname === '/demo')          page = <DemoPage />
   else if (pathname === '/auth')          page = <AuthPage />
+  else if (pathname === '/docs')          page = <DocsPage public />
   else if (pathname === '/app/projects')  page = <ProjectsPage />
   else if (pathname === '/app/onboarding') page = <OnboardingPage />
   else if (pathname === '/app/docs')      page = <DocsPage />
@@ -73,7 +74,7 @@ function App() {
 
   /* ── Public shell: NavBar + page, NO sidebar ── */
   if (isPublic) {
-    const activeHref = pathname === '/demo' ? '/demo' : pathname === '/auth' ? '/auth' : '/'
+    const activeHref = pathname === '/demo' ? '/demo' : pathname === '/docs' ? '/docs' : pathname === '/auth' ? '/auth' : '/'
 
     return (
       <div className="min-h-screen bg-[#1a1322] text-text">
