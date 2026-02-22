@@ -50,6 +50,8 @@ echo "[go] Starting Go backend on http://localhost:8080"
   cd "$ROOT/go-backend"
   export DATABASE_URL="postgres://veil:veil@localhost:5432/veil?sslmode=disable"
   # Load .env (check go-backend/ first, then project root)
+  # Temporarily disable nounset — .env values may contain $ characters
+  set +u
   for envfile in "$ROOT/go-backend/.env" "$ROOT/.env"; do
     if [ -f "$envfile" ]; then
       set -a
@@ -58,6 +60,7 @@ echo "[go] Starting Go backend on http://localhost:8080"
       break
     fi
   done
+  set -u
   go run ./cmd/server/main.go
 ) &
 PIDS+=($!)
