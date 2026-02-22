@@ -221,6 +221,16 @@ func main() {
 	// sites table by Host header and proxied to the upstream if found.
 	r.NotFound(proxyHandler.HostRoute)
 
+	// Seed threat intelligence data from existing blocked requests
+	if count, err := database.SeedThreatIPsFromBlockedRequests(ctx); err != nil {
+		logger.Warn("failed to seed threat IPs", "err", err)
+	} else if count > 0 {
+		logger.Info("seeded threat IPs from blocked requests", "count", count)
+	}
+	if err := database.SeedThreatFeeds(ctx); err != nil {
+		logger.Warn("failed to seed threat feeds", "err", err)
+	}
+
 	// Start background goroutines
 	go server.RunWithRecovery(ctx, logger, "dns-verifier", dnsVerifier.VerificationLoop)
 	go server.RunWithRecovery(ctx, logger, "session-cleanup", sm.CleanupLoop)

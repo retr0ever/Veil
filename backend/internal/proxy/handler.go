@@ -422,6 +422,12 @@ func (h *Handler) logAndBroadcast(site *db.Site, rawForLog, rawRequest, sourceIP
 		h.logger.Error("failed to log request", "err", err)
 	}
 
+	// Auto-populate threat_ips for blocked malicious requests
+	if blocked && sourceIP != "" {
+		tier := "scrutinize" // default: flag for deeper analysis
+		_ = h.db.InsertSingleThreatIP(ctx, sourceIP, tier, "waf-live")
+	}
+
 	if h.hub != nil {
 		eventData, _ := json.Marshal(map[string]any{
 			"type":           "request",

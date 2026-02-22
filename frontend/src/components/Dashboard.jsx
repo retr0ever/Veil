@@ -1077,7 +1077,7 @@ export function Dashboard({ site, activeSection = 'site', onSiteUpdate }) {
     })
 
     items.sort((a, b) => b.time - a.time)
-    return items.slice(0, 50)
+    return items.slice(0, 200)
   }, [requests, agentEvents])
 
   const safeCount = requests.filter((r) => r.classification === 'SAFE').length
@@ -1120,7 +1120,7 @@ export function Dashboard({ site, activeSection = 'site', onSiteUpdate }) {
                     )}
                     <span className={`relative inline-flex h-2 w-2 rounded-full ${hasTraffic ? 'bg-safe' : 'bg-muted'}`} />
                   </div>
-                  <h4 className="text-[15px] font-semibold text-text">Live activity</h4>
+                  <h4 className="text-[15px] font-semibold text-text">Activity</h4>
                   {mergedFeed.length > 0 && (
                     <span className="rounded-full bg-surface px-2 py-0.5 text-[12px] font-medium text-muted">
                       {mergedFeed.length}

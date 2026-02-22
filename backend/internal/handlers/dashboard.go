@@ -93,7 +93,7 @@ func (dh *DashboardHandler) GetRequests(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	requests, err := dh.db.GetRecentRequests(r.Context(), siteID, 100)
+	requests, err := dh.db.GetRecentRequests(r.Context(), siteID, 200)
 	if err != nil {
 		jsonError(w, "failed to fetch requests", http.StatusInternalServerError)
 		return

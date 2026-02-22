@@ -383,7 +383,7 @@ func (db *DB) GetRecentAgentLogs(ctx context.Context, siteID int, limit int) ([]
 	} else {
 		rows, err = db.Pool.Query(ctx,
 			`SELECT id, site_id, timestamp, agent, action, detail, success
-			 FROM agent_log WHERE site_id = $1 ORDER BY timestamp DESC LIMIT $2`, siteID, limit)
+			 FROM agent_log WHERE (site_id = $1 OR site_id IS NULL) ORDER BY timestamp DESC LIMIT $2`, siteID, limit)
 	}
 	if err != nil {
 		return nil, err
@@ -416,7 +416,7 @@ func (db *DB) GetCurrentRules(ctx context.Context, siteID int) (*Rules, error) {
 	var r Rules
 	err := db.Pool.QueryRow(ctx,
 		`SELECT id, site_id, version, crusoe_prompt, claude_prompt, updated_at, updated_by
-		 FROM rules WHERE site_id = $1 ORDER BY version DESC LIMIT 1`, siteID,
+		 FROM rules WHERE (site_id = $1 OR site_id IS NULL) ORDER BY version DESC LIMIT 1`, siteID,
 	).Scan(&r.ID, &r.SiteID, &r.Version, &r.CrusoePrompt, &r.ClaudePrompt, &r.UpdatedAt, &r.UpdatedBy)
 	if err != nil {
 		return nil, err
@@ -458,7 +458,7 @@ func (db *DB) GetThreats(ctx context.Context, siteID int) ([]Threat, error) {
 	} else {
 		rows, err = db.Pool.Query(ctx,
 			`SELECT id, site_id, technique_name, category, source, raw_payload, severity, discovered_at, tested_at, blocked, patched_at
-			 FROM threats WHERE site_id = $1 ORDER BY discovered_at DESC`, siteID)
+			 FROM threats WHERE (site_id = $1 OR site_id IS NULL) ORDER BY discovered_at DESC`, siteID)
 	}
 	if err != nil {
 		return nil, err
@@ -708,6 +708,70 @@ func (db *DB) CountThreatIPs(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+// SeedThreatIPsFromBlockedRequests extracts distinct IPs from blocked
+// malicious requests and inserts them into threat_ips with appropriate tiers.
+func (db *DB) SeedThreatIPsFromBlockedRequests(ctx context.Context) (int64, error) {
+	tag, err := db.Pool.Exec(ctx,
+		`INSERT INTO threat_ips (ip, tier, source)
+		 SELECT DISTINCT source_ip::inet,
+		        CASE WHEN block_count >= 5 THEN 'ban'
+		             WHEN block_count >= 3 THEN 'block'
+		             ELSE 'scrutinize'
+		        END,
+		        'waf-observed'
+		 FROM (
+		     SELECT source_ip, COUNT(*) AS block_count
+		     FROM request_log
+		     WHERE blocked = true AND classification = 'MALICIOUS'
+		       AND source_ip IS NOT NULL AND source_ip != ''
+		     GROUP BY source_ip
+		 ) sub
+		 ON CONFLICT DO NOTHING`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// SeedThreatFeeds populates the threat_feeds table with well-known threat
+// intelligence sources for the dashboard to display.
+func (db *DB) SeedThreatFeeds(ctx context.Context) error {
+	feeds := []struct {
+		Name string
+		URL  string
+		Tier int
+	}{
+		{"CrowdSec Community Blocklist", "https://cti.api.crowdsec.net/v2/smoke", 1},
+		{"Emerging Threats Open", "https://rules.emergingthreats.net/blockrules/compromised-ips.txt", 2},
+		{"AbuseIPDB Confidence 90+", "https://api.abuseipdb.com/api/v2/blacklist", 1},
+		{"Spamhaus DROP", "https://www.spamhaus.org/drop/drop.txt", 1},
+		{"Spamhaus EDROP", "https://www.spamhaus.org/drop/edrop.txt", 1},
+		{"Tor Exit Nodes", "https://check.torproject.org/torbulkexitlist", 3},
+		{"Firehol Level 1", "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset", 2},
+		{"Blocklist.de All", "https://lists.blocklist.de/lists/all.txt", 2},
+		{"WAF Observed Attackers", "internal://waf-observed", 1},
+	}
+	for _, f := range feeds {
+		_, err := db.Pool.Exec(ctx,
+			`INSERT INTO threat_feeds (name, url, tier, enabled)
+			 VALUES ($1, $2, $3, true)
+			 ON CONFLICT (name) DO NOTHING`,
+			f.Name, f.URL, f.Tier)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// InsertSingleThreatIP inserts a single threat IP entry (e.g. from live WAF blocking).
+func (db *DB) InsertSingleThreatIP(ctx context.Context, ip, tier, source string) error {
+	_, err := db.Pool.Exec(ctx,
+		`INSERT INTO threat_ips (ip, tier, source) VALUES ($1::inet, $2, $3)
+		 ON CONFLICT DO NOTHING`, ip, tier, source)
+	return err
+}
+
 // ---------------------------------------------------------------------------
 // GitHub repos
 // ---------------------------------------------------------------------------
@@ -772,7 +836,7 @@ func (db *DB) InsertCodeFinding(ctx context.Context, f *CodeFinding) error {
 func (db *DB) GetCodeFindings(ctx context.Context, siteID int) ([]CodeFinding, error) {
 	rows, err := db.Pool.Query(ctx,
 		`SELECT id, site_id, threat_id, file_path, line_start, line_end, snippet, finding_type, confidence, description, suggested_fix, status, created_at
-		 FROM code_findings WHERE site_id = $1 ORDER BY created_at DESC`, siteID)
+		 FROM code_findings WHERE (site_id = $1 OR site_id IS NULL OR site_id = 0) ORDER BY created_at DESC`, siteID)
 	if err != nil {
 		return nil, err
 	}
