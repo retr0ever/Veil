@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -66,6 +67,7 @@ var proxyClient = &http.Client{
 		DialContext:         ssrfSafeDial,
 		MaxIdleConnsPerHost: 20,
 		IdleConnTimeout:     90 * time.Second,
+		TLSClientConfig:    &tls.Config{InsecureSkipVerify: true}, // Accept self-signed certs on origins (like Cloudflare "Full" mode)
 	},
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
