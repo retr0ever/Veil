@@ -423,6 +423,7 @@ function TestResultsSummary({ results }) {
 function RepoConnectCard({ siteId, repoInfo, setRepoInfo, repoLoading }) {
   const [repos, setRepos] = useState([])
   const [loadingRepos, setLoadingRepos] = useState(false)
+  const [needsGithubConnect, setNeedsGithubConnect] = useState(false)
   const [linking, setLinking] = useState(false)
   const [unlinking, setUnlinking] = useState(false)
   const [selectedRepo, setSelectedRepo] = useState('')
@@ -434,9 +435,18 @@ function RepoConnectCard({ siteId, repoInfo, setRepoInfo, repoLoading }) {
       if (res.ok) {
         const data = await res.json()
         setRepos(Array.isArray(data) ? data : [])
+        setNeedsGithubConnect(false)
+      } else if (res.status === 400) {
+        // 400 means no GitHub token with repo scope stored yet
+        setNeedsGithubConnect(true)
       }
     } catch {}
     setLoadingRepos(false)
+  }
+
+  const beginRepoConnect = () => {
+    // Redirect to the incremental OAuth flow that requests repo scope
+    window.location.href = `/api/auth/github/repo-connect?site_id=${siteId}`
   }
 
   const linkRepo = async () => {
@@ -476,6 +486,21 @@ function RepoConnectCard({ siteId, repoInfo, setRepoInfo, repoLoading }) {
     } catch {}
     setUnlinking(false)
   }
+
+  // Probe GitHub connection status on mount when not linked
+  useEffect(() => {
+    if (repoLoading || repoInfo?.linked) return
+    // Quick probe — try to list repos to see if we need the connect flow
+    const probe = async () => {
+      try {
+        const res = await fetch(`/api/sites/${siteId}/repos`)
+        if (res.status === 400) {
+          setNeedsGithubConnect(true)
+        }
+      } catch {}
+    }
+    probe()
+  }, [siteId, repoLoading, repoInfo?.linked])
 
   const isLinked = repoInfo?.linked === true
 
@@ -533,6 +558,21 @@ function RepoConnectCard({ siteId, repoInfo, setRepoInfo, repoLoading }) {
                 {unlinking ? 'Unlinking...' : 'Unlink'}
               </button>
             </div>
+          ) : needsGithubConnect ? (
+            <div className="mt-4 space-y-3">
+              <p className="text-[13px] text-dim">
+                Veil needs additional GitHub permissions to read your repositories. Click below to grant the <span className="font-mono text-text">repo</span> scope via GitHub OAuth.
+              </p>
+              <button
+                onClick={beginRepoConnect}
+                className="flex items-center gap-2 rounded-lg bg-text px-5 py-2.5 text-[14px] font-semibold text-bg transition-opacity hover:opacity-90"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="opacity-70">
+                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+                </svg>
+                Connect GitHub
+              </button>
+            </div>
           ) : (
             <div className="mt-4 space-y-3">
               {repos.length === 0 ? (
@@ -571,9 +611,6 @@ function RepoConnectCard({ siteId, repoInfo, setRepoInfo, repoLoading }) {
                   </button>
                 </div>
               )}
-              <p className="text-[12px] text-muted">
-                If you don't see your repos, make sure you've granted Veil access to your GitHub account with the <span className="font-mono">repo</span> scope.
-              </p>
             </div>
           )}
         </div>
