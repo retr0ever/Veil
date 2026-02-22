@@ -118,7 +118,25 @@ func (c *Client) Add(ctx context.Context, req *AddRequest) error {
 // Search queries mem0 for memories matching the given request and returns
 // the results ordered by relevance score.
 func (c *Client) Search(ctx context.Context, req *SearchRequest) ([]Memory, error) {
-	body, err := json.Marshal(req)
+	// mem0 v2 requires agent_id inside "filters", not as a top-level field.
+	payload := map[string]any{
+		"query": req.Query,
+	}
+	if req.TopK > 0 {
+		payload["top_k"] = req.TopK
+	}
+	filters := make(map[string]any)
+	if req.AgentID != "" {
+		filters["agent_id"] = req.AgentID
+	}
+	for k, v := range req.Filters {
+		filters[k] = v
+	}
+	if len(filters) > 0 {
+		payload["filters"] = filters
+	}
+
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("memory: marshal search request: %w", err)
 	}
