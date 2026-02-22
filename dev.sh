@@ -4,11 +4,17 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
+PIDS=()
+
 cleanup() {
+  trap - EXIT INT TERM
   echo ""
   echo "Shutting down..."
-  kill 0 2>/dev/null
+  for pid in "${PIDS[@]}"; do
+    kill "$pid" 2>/dev/null
+  done
   wait 2>/dev/null
+  exit 0
 }
 trap cleanup EXIT INT TERM
 
@@ -51,6 +57,7 @@ echo "[go] Starting Go backend on http://localhost:8080"
   fi
   go run ./cmd/server/main.go
 ) &
+PIDS+=($!)
 
 # ── Frontend ────────────────────────────────────────────────────────
 echo "[ui] Starting frontend on http://localhost:5173"
@@ -58,6 +65,7 @@ echo "[ui] Starting frontend on http://localhost:5173"
   cd "$ROOT/frontend"
   npm run dev
 ) &
+PIDS+=($!)
 
 # Wait a moment then show status
 sleep 3
