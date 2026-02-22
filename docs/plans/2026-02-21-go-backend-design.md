@@ -66,9 +66,12 @@ The Go backend is a separate codebase from the Python backend (`go-backend/` dir
 │  │  - analyze_bypass.md      (bypass root cause analysis)     │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                                                                  │
-│  Database: SQLite WAL, 10 tables (6 core + 4 behavioral)        │
-│  WebSocket: Real-time dashboard via /ws                          │
-│  Auth: GitHub OAuth with HMAC-signed session cookies             │
+│  Database: PostgreSQL 18 + extensions (pgcrypto, btree_gist,     │
+│            pg_trgm, pg_stat_statements, pg_partman)              │
+│  Streaming: SSE via PostgreSQL LISTEN/NOTIFY → Go SSE hub        │
+│  Auth: GitHub OAuth + server-side sessions in PostgreSQL         │
+│  TLS: certmagic (auto ACME/Let's Encrypt, on-demand per-site)   │
+│  Proxy: Host-header routing via httputil.ReverseProxy             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -135,80 +138,280 @@ msg, err := client.Messages.New(ctx, anthropic.MessageNewParams{
 })
 ```
 
-## 3. Database Schema (10 Tables)
+## 3. Database — PostgreSQL 18
 
-### Core tables (matching Python backend):
+### Extensions
 
 ```sql
-users (id, github_id UNIQUE, github_login, avatar_url, name, created_at)
-sites (id, site_id UNIQUE, target_url, user_id FK, created_at)
-threats (id, technique_name, category, source, raw_payload, severity,
-         discovered_at, tested_at, blocked, patched_at)
-request_log (id, timestamp, raw_request, classification, confidence,
-             classifier, blocked, attack_type, response_time_ms)
-agent_log (id, timestamp, agent, action, detail, success)
-rules (id, version, crusoe_prompt, claude_prompt, updated_at, updated_by)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;         -- gen_random_uuid(), digest()
+CREATE EXTENSION IF NOT EXISTS btree_gist;       -- GiST indexes for inet containment
+CREATE EXTENSION IF NOT EXISTS pg_trgm;          -- Trigram indexes for fuzzy text search
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements; -- Query performance monitoring
+-- pg_partman installed for automatic partition management on request_log
 ```
 
-### New behavioral tables (from CrowdSec spec):
+### Core Tables
 
 ```sql
--- Graduated decisions (replaces binary block/allow)
-decisions (
-    id INTEGER PRIMARY KEY,
-    ip TEXT NOT NULL,
-    decision_type TEXT NOT NULL,  -- ban, captcha, throttle, log_only
-    scope TEXT NOT NULL,          -- ip, session, fingerprint
-    duration_seconds INTEGER,
-    reason TEXT,
-    source TEXT,                  -- regex, model, behavioral, community
-    confidence REAL,
-    created_at TEXT,
-    expires_at TEXT,
-    site_id TEXT
-)
+CREATE TABLE users (
+    id              SERIAL PRIMARY KEY,
+    github_id       BIGINT NOT NULL UNIQUE,
+    github_login    TEXT NOT NULL,
+    avatar_url      TEXT,
+    name            TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
--- Cross-tenant IP reputation
-ip_reputation (
-    ip TEXT PRIMARY KEY,
-    score REAL DEFAULT 0.0,      -- 0=trusted, 1=malicious
-    attack_count INTEGER DEFAULT 0,
-    tenant_count INTEGER DEFAULT 0,
-    attack_types TEXT,            -- JSON array
-    first_seen TEXT,
-    last_seen TEXT,
-    geo_country TEXT,
-    asn TEXT,
-    is_tor BOOLEAN DEFAULT 0,
-    is_vpn BOOLEAN DEFAULT 0
-)
+CREATE TABLE sessions (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at  TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '30 days',
+    ip_address  inet,
+    user_agent  TEXT
+);
+CREATE INDEX idx_sessions_user ON sessions(user_id);
+CREATE INDEX idx_sessions_expires ON sessions(expires_at);
 
--- Per-IP behavioral tracking
-behavioral_sessions (
-    id INTEGER PRIMARY KEY,
-    ip TEXT NOT NULL,
-    site_id TEXT NOT NULL,
-    window_start TEXT,
-    request_count INTEGER DEFAULT 0,
-    error_count INTEGER DEFAULT 0,
-    unique_paths INTEGER DEFAULT 0,
-    auth_failures INTEGER DEFAULT 0,
+CREATE TABLE sites (
+    id              SERIAL PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    domain          TEXT NOT NULL UNIQUE,
+    project_name    TEXT,
+    upstream_ip     inet NOT NULL,
+    original_cname  TEXT,
+    status          TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','verifying','active',
+                                      'ssl_provisioning','live','error')),
+    verified_at     TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_sites_domain ON sites(domain);
+CREATE INDEX idx_sites_user ON sites(user_id);
+
+CREATE TABLE threats (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    site_id         INTEGER REFERENCES sites(id) ON DELETE CASCADE,
+    technique_name  TEXT NOT NULL,
+    category        TEXT NOT NULL DEFAULT 'sqli',
+    source          TEXT,
+    raw_payload     TEXT NOT NULL,
+    severity        TEXT NOT NULL DEFAULT 'medium',
+    discovered_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    tested_at       TIMESTAMPTZ,
+    blocked         BOOLEAN NOT NULL DEFAULT FALSE,
+    patched_at      TIMESTAMPTZ
+);
+
+-- Partitioned by month for efficient retention management
+CREATE TABLE request_log (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY,
+    site_id         INTEGER NOT NULL,
+    timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    raw_request     TEXT NOT NULL,
+    classification  TEXT NOT NULL,
+    confidence      REAL,
+    classifier      TEXT NOT NULL,
+    blocked         BOOLEAN NOT NULL DEFAULT FALSE,
+    attack_type     TEXT,
+    response_time_ms REAL,
+    source_ip       inet,
+    PRIMARY KEY (id, timestamp)
+) PARTITION BY RANGE (timestamp);
+
+CREATE TABLE agent_log (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    site_id     INTEGER REFERENCES sites(id) ON DELETE CASCADE,
+    timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    agent       TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    detail      TEXT,
+    success     BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE rules (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    site_id     INTEGER REFERENCES sites(id) ON DELETE CASCADE,
+    version     INTEGER NOT NULL DEFAULT 1,
+    crusoe_prompt TEXT NOT NULL,
+    claude_prompt TEXT NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by  TEXT NOT NULL DEFAULT 'system'
+);
+```
+
+### IP Threat Intelligence Tables
+
+```sql
+CREATE TABLE threat_ips (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ip          inet NOT NULL,
+    tier        TEXT NOT NULL CHECK (tier IN ('ban', 'block', 'scrutinize')),
+    source      TEXT NOT NULL,
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_threat_ips_containment ON threat_ips USING gist (ip inet_ops);
+CREATE INDEX idx_threat_ips_source ON threat_ips(source);
+
+CREATE TABLE threat_feeds (
+    id          SERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    url         TEXT NOT NULL,
+    tier        INTEGER NOT NULL,
+    last_fetch  TIMESTAMPTZ,
+    last_success TIMESTAMPTZ,
+    entry_count INTEGER DEFAULT 0,
+    error       TEXT,
+    enabled     BOOLEAN DEFAULT TRUE
+);
+```
+
+### Behavioral Tables
+
+```sql
+CREATE TABLE decisions (
+    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ip                inet NOT NULL,
+    decision_type     TEXT NOT NULL CHECK (decision_type IN ('ban','captcha','throttle','log_only')),
+    scope             TEXT NOT NULL,
+    duration_seconds  INTEGER,
+    reason            TEXT,
+    source            TEXT,
+    confidence        REAL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at        TIMESTAMPTZ,
+    site_id           INTEGER REFERENCES sites(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_decisions_ip ON decisions USING gist (ip inet_ops);
+CREATE INDEX idx_decisions_expires ON decisions(expires_at);
+
+CREATE TABLE ip_reputation (
+    ip              inet PRIMARY KEY,
+    score           REAL DEFAULT 0.0,
+    attack_count    INTEGER DEFAULT 0,
+    tenant_count    INTEGER DEFAULT 0,
+    attack_types    JSONB DEFAULT '[]',
+    first_seen      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    geo_country     TEXT,
+    asn             TEXT,
+    is_tor          BOOLEAN DEFAULT FALSE,
+    is_vpn          BOOLEAN DEFAULT FALSE
+);
+CREATE INDEX idx_ip_reputation_score ON ip_reputation(score);
+
+CREATE TABLE behavioral_sessions (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ip              inet NOT NULL,
+    site_id         INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    window_start    TIMESTAMPTZ,
+    request_count   INTEGER DEFAULT 0,
+    error_count     INTEGER DEFAULT 0,
+    unique_paths    INTEGER DEFAULT 0,
+    auth_failures   INTEGER DEFAULT 0,
     avg_interval_ms REAL,
-    flags TEXT                    -- JSON array of detected behaviors
-)
+    flags           JSONB DEFAULT '[]'
+);
+CREATE INDEX idx_behavioral_ip_site ON behavioral_sessions(ip, site_id);
 
--- Auto-learned endpoint sensitivity
-endpoint_profiles (
-    id INTEGER PRIMARY KEY,
-    site_id TEXT NOT NULL,
-    path_pattern TEXT NOT NULL,
-    sensitivity TEXT DEFAULT 'MEDIUM',
-    attack_frequency REAL,
-    false_positive_rate REAL,
-    skip_classification BOOLEAN DEFAULT 0,
-    force_deep_analysis BOOLEAN DEFAULT 0,
-    updated_at TEXT
-)
+CREATE TABLE endpoint_profiles (
+    id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    site_id              INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    path_pattern         TEXT NOT NULL,
+    sensitivity          TEXT DEFAULT 'MEDIUM',
+    attack_frequency     REAL,
+    false_positive_rate  REAL,
+    skip_classification  BOOLEAN DEFAULT FALSE,
+    force_deep_analysis  BOOLEAN DEFAULT FALSE,
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### CrowdSec Hub Table
+
+```sql
+CREATE TABLE hub_rules (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    hub_name      TEXT NOT NULL UNIQUE,
+    hub_type      TEXT NOT NULL,
+    version       TEXT,
+    yaml_content  TEXT,
+    imported_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    site_id       INTEGER REFERENCES sites(id) ON DELETE CASCADE,
+    active        BOOLEAN DEFAULT TRUE
+);
+```
+
+### GitHub Repo Connection Tables
+
+```sql
+CREATE TABLE github_tokens (
+    user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    encrypted_token TEXT NOT NULL,
+    scopes          TEXT NOT NULL DEFAULT 'read:user',
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE site_repos (
+    site_id         INTEGER PRIMARY KEY REFERENCES sites(id) ON DELETE CASCADE,
+    repo_owner      TEXT NOT NULL,
+    repo_name       TEXT NOT NULL,
+    default_branch  TEXT NOT NULL DEFAULT 'main',
+    connected_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE code_findings (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    site_id         INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    threat_id       BIGINT REFERENCES threats(id),
+    file_path       TEXT NOT NULL,
+    line_start      INTEGER,
+    line_end        INTEGER,
+    snippet         TEXT,
+    finding_type    TEXT NOT NULL,
+    confidence      REAL NOT NULL,
+    description     TEXT NOT NULL,
+    suggested_fix   TEXT,
+    status          TEXT NOT NULL DEFAULT 'open'
+                    CHECK (status IN ('open','acknowledged','fixed','false_positive')),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_code_findings_site ON code_findings(site_id);
+CREATE INDEX idx_code_findings_threat ON code_findings(threat_id);
+```
+
+### SSE Notification Triggers
+
+```sql
+CREATE OR REPLACE FUNCTION notify_request_log() RETURNS trigger AS $$
+BEGIN
+    PERFORM pg_notify('request_stream', json_build_object(
+        'id', NEW.id, 'site_id', NEW.site_id, 'timestamp', NEW.timestamp,
+        'raw_request', left(NEW.raw_request, 120), 'classification', NEW.classification,
+        'confidence', NEW.confidence, 'classifier', NEW.classifier,
+        'blocked', NEW.blocked, 'attack_type', NEW.attack_type,
+        'response_time_ms', NEW.response_time_ms, 'source_ip', NEW.source_ip
+    )::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_request_log_notify
+    AFTER INSERT ON request_log FOR EACH ROW EXECUTE FUNCTION notify_request_log();
+
+CREATE OR REPLACE FUNCTION notify_agent_log() RETURNS trigger AS $$
+BEGIN
+    PERFORM pg_notify('agent_stream', json_build_object(
+        'id', NEW.id, 'site_id', NEW.site_id, 'timestamp', NEW.timestamp,
+        'agent', NEW.agent, 'action', NEW.action,
+        'detail', left(NEW.detail, 200), 'success', NEW.success
+    )::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_agent_log_notify
+    AFTER INSERT ON agent_log FOR EACH ROW EXECUTE FUNCTION notify_agent_log();
 ```
 
 ## 4. Genkit Flow Definitions
@@ -408,11 +611,20 @@ go-backend/
 │   ├── proxy/
 │   │   └── proxy.go                  -- Enhanced reverse proxy
 │   ├── db/
-│   │   └── database.go               -- SQLite, 10 tables, CRUD
+│   │   ├── database.go               -- PostgreSQL pool, migrations, CRUD
+│   │   └── migrations/               -- SQL migration files (001_init.sql, etc.)
 │   ├── auth/
-│   │   └── github.go                 -- GitHub OAuth
-│   ├── ws/
-│   │   └── hub.go                    -- WebSocket hub
+│   │   ├── github.go                 -- GitHub OAuth (login + repo connect)
+│   │   ├── sessions.go               -- Server-side session management
+│   │   └── crypto.go                 -- AES-256-GCM token encryption
+│   ├── sse/
+│   │   └── hub.go                    -- SSE fan-out hub (replaces WebSocket)
+│   ├── repo/
+│   │   └── scanner.go                -- GitHub repo code scanning for agents
+│   ├── dns/
+│   │   └── verifier.go               -- DNS resolution + background verification
+│   ├── tls/
+│   │   └── certmanager.go            -- certmagic wrapper + on-demand TLS
 │   └── ratelimit/
 │       └── limiter.go                -- Per-IP sliding window
 ```
@@ -424,18 +636,27 @@ go-backend/
 | `github.com/firebase/genkit/go` | Flow orchestration, Ollama plugin, OTel tracing |
 | `github.com/firebase/genkit/go/plugins/ollama` | Local model inference |
 | `github.com/anthropics/anthropic-sdk-go` | Claude via Bedrock |
-| `github.com/mattn/go-sqlite3` | Database |
-| `github.com/gorilla/mux` | HTTP routing |
-| `github.com/gorilla/websocket` | Real-time dashboard |
+| `github.com/jackc/pgx/v5` | PostgreSQL driver + connection pool + LISTEN/NOTIFY |
+| `github.com/caddyserver/certmagic` | Auto ACME/Let's Encrypt TLS |
+| `github.com/go-chi/chi/v5` | HTTP routing (lightweight, stdlib-compatible) |
+| `github.com/google/go-github/v60` | GitHub API client (repo access, code search) |
 | `golang.org/x/oauth2` | GitHub OAuth |
 | `gopkg.in/yaml.v3` | CrowdSec Hub YAML parsing |
-| `net/http` (stdlib) | Crusoe API calls |
+| `net/http/httputil` (stdlib) | Reverse proxy |
+| `log/slog` (stdlib) | Structured JSON logging |
+| `crypto/aes` + `crypto/cipher` (stdlib) | AES-256-GCM token encryption |
 
 ## 9. Environment Variables
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | `postgres://veil:pass@localhost:5432/veil?sslmode=disable` |
 | `PORT` / `LISTEN_ADDR` | HTTP server address | `:8080` |
+| `VEIL_ENV` | Environment (`production`/`development`) | `development` |
+| `VEIL_PROXY_CNAME` | CNAME target for site DNS verification | `router.reveil.tech` |
+| `VEIL_DASHBOARD_DOMAIN` | Dashboard domain for TLS cert | `app.reveil.tech` |
+| `ACME_EMAIL` | Let's Encrypt registration email | (required for TLS) |
+| `TOKEN_ENCRYPTION_KEY` | 32-byte hex key for AES-256-GCM token encryption | (required) |
 | `OLLAMA_HOST` | Ollama sidecar URL | `http://localhost:11434` |
 | `OLLAMA_MODEL` | Fast model name | `qwen3:0.6b` |
 | `CRUSOE_API_KEY` | Crusoe inference auth | (required for Stage 3) |
@@ -447,7 +668,6 @@ go-backend/
 | `BEDROCK_MODEL` | Claude model ID | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` |
 | `GITHUB_CLIENT_ID` | OAuth app ID | (required) |
 | `GITHUB_CLIENT_SECRET` | OAuth app secret | (required) |
-| `SESSION_SECRET` | Cookie signing key | (required) |
 | `VEIL_PROXY_URL` | Poke agent target | `http://localhost:8080` |
 | `CROWDSEC_HUB_URL` | Hub index URL | `https://raw.githubusercontent.com/crowdsecurity/hub/master/.index.json` |
 | `INTEL_ENABLED` | Enable threat feed aggregation | `true` |
@@ -466,6 +686,13 @@ go-backend/
 7. **Go performance**: The reverse proxy, behavioral engine, and regex classifier all run in pure Go with zero network calls for the fast path.
 8. **CrowdSec Hub integration**: Dynamic import of MIT-licensed detection rules from the CrowdSec community Hub — AppSec rules become compiled Go matchers, scenarios become behavioral engine configs. A "Learn" agent auto-detects the protected app type and imports relevant collections.
 9. **Multi-source IP threat intelligence**: Aggregates 9 open-source blocklists (~190,000+ IPs + ~7,500 CIDRs) into a tiered reputation system. Day-zero protection before Veil's AI observes any traffic. Spamhaus DROP, AbuseIPDB, IPsum, FireHOL, Blocklist.de, CINS, Emerging Threats, Tor exits — all free, no API keys, auto-refreshed.
+10. **PostgreSQL-native IP matching**: Uses `inet`/`cidr` types with GiST indexes for O(log n) IP containment checks — `WHERE ip >>= '203.0.113.42'` replaces custom radix tries.
+11. **Auto-TLS with certmagic**: On-demand Let's Encrypt certificate provisioning for every verified site. Single binary handles TLS termination, no nginx/Caddy required.
+12. **Host-header routing**: True transparent reverse proxy — users CNAME their domain to `router.reveil.tech`, Veil routes by `Host` header. No `/p/{site_id}/` URL prefix.
+13. **Cloudflare-style DNS onboarding**: Resolves current DNS records on site creation, shows instructions, background-polls for verification, auto-provisions TLS once verified.
+14. **GitHub repo connection**: Agents trace detected vulnerabilities back to source code via GitHub API. Incremental OAuth (`repo` scope), encrypted token storage, LLM-powered code scanning with file/line-level findings.
+15. **SSE via PostgreSQL LISTEN/NOTIFY**: Zero-polling real-time dashboard. DB triggers push events to Go, which fans out to browser `EventSource` connections. Auto-reconnect built into the browser API.
+16. **Intelligence & compliance dashboard**: Security posture scoring, threat distribution analytics, autonomous remediation tracking — pulled from `feat/intelligence-compliance` branch.
 
 ## 11. CrowdSec Hub Integration
 
@@ -742,7 +969,313 @@ threat_feeds (
 | `INTEL_REFRESH_ON_START` | Fetch all feeds on startup | `true` |
 | `INTEL_TOR_TIER` | Tor exit node tier (1-3 or 0 to ignore) | `3` |
 
-## 13. Existing Worktrees (Reference)
+## 13. Auth Flow — GitHub OAuth + Server-Side Sessions
+
+### OAuth Flow
+
+```
+Browser                        Go Backend                     GitHub
+  |-- GET /auth/github ------->|-- generate state (UUID) ---->|
+  |                            |-- store state in sessions DB |
+  |<-- 302 github.com/authorize (with state param)            |
+  |                                                            |
+  |-- (user authorizes) ---------------------------------------->
+  |<-- 302 /auth/github/callback?code=X&state=Y                |
+  |                                                            |
+  |-- GET /callback ---------->|-- validate state from DB      |
+  |                            |-- DELETE state row            |
+  |                            |-- POST /access_token -------->|
+  |                            |<-- access_token --------------|
+  |                            |-- GET /user (Bearer) -------->|
+  |                            |<-- user profile --------------|
+  |                            |-- UPSERT user in users table  |
+  |                            |-- INSERT session row (UUID)   |
+  |<-- 302 /app/projects ------|                               |
+  |    Set-Cookie: veil_sid=<uuid>                             |
+```
+
+### Session Cookie
+
+- Name: `veil_sid`
+- Value: UUID v4 session ID (looked up server-side, no signing needed)
+- `HttpOnly`, `SameSite=Lax`, `Secure` (in production)
+- `Path=/`, `Max-Age=2592000` (30 days)
+
+### Auth Middleware
+
+Every authenticated request: read `veil_sid` cookie → `SELECT * FROM sessions WHERE id = $1 AND expires_at > NOW()` → attach user to request context. Expired sessions return 401. Background cleanup goroutine purges expired sessions daily.
+
+### Fixes vs Current Python Backend
+
+- Adds `state` parameter (CSRF protection)
+- Server-side sessions instead of signed cookies (full revocation)
+- `POST` for logout (not GET)
+- Session expiry enforced server-side
+- IP/user-agent stored for audit
+
+### Auth Endpoints
+
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `/auth/github` | GET | No | Redirect to GitHub OAuth with `state` |
+| `/auth/github/callback` | GET | No | Exchange code, create session |
+| `/auth/me` | GET | Yes | Return current user profile |
+| `/auth/logout` | POST | Yes | Delete session row, clear cookie |
+| `/auth/github/repo-connect` | GET | Yes | OAuth with `repo` scope for code scanning |
+| `/auth/github/repo-callback` | GET | No | Store encrypted repo token |
+| `/ping` | GET | No | Health check (verifies DB reachable) |
+
+## 14. DNS Onboarding Flow
+
+### Site Creation + DNS Resolution
+
+When a user adds a site, the backend resolves the domain's current DNS records:
+
+```go
+func resolveDomain(domain string) (*DNSRecords, error) {
+    result := &DNSRecords{Domain: domain}
+    // Try CNAME first
+    cname, err := net.LookupCNAME(domain)
+    if err == nil && cname != domain+"." {
+        result.CNAME = strings.TrimSuffix(cname, ".")
+    }
+    // Always resolve A/AAAA records
+    ips, err := net.LookupHost(domain)
+    if err != nil {
+        return nil, fmt.Errorf("cannot resolve %s: %w", domain, err)
+    }
+    for _, ip := range ips {
+        if parsed := net.ParseIP(ip); parsed.To4() != nil {
+            result.A = append(result.A, ip)
+        } else {
+            result.AAAA = append(result.AAAA, ip)
+        }
+    }
+    return result, nil
+}
+```
+
+### Site Status Lifecycle
+
+```
+pending ──> verifying ──> active ──> ssl_provisioning ──> live
+   │            │            │                              │
+   └────────────┴────────────┴──── error <─────────────────┘
+```
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Created, waiting for user to update DNS |
+| `verifying` | DNS change detected, checking if it points to us |
+| `active` | DNS verified, CNAME points to `router.reveil.tech` |
+| `ssl_provisioning` | certmagic obtaining Let's Encrypt certificate |
+| `live` | Fully operational — TLS + proxying |
+| `error` | DNS reverted, cert issue, or upstream unreachable |
+
+### Background DNS Verification
+
+A goroutine polls every 60 seconds for sites in `pending`/`verifying` status. Network errors are logged at WARN level and the site stays in its current status for retry on the next tick. On backend restart, all unverified sites are picked up from PostgreSQL — no state is lost.
+
+### Frontend Onboarding UX
+
+After `POST /api/sites`, the onboarding page shows Cloudflare-style DNS instructions:
+- Current DNS records for the domain (A records, CNAME)
+- Instruction to add a CNAME record pointing to `router.reveil.tech`
+- Live status badge polling `GET /api/sites/{id}/status` every 10 seconds
+- Manual "Check Now" button triggering `POST /api/sites/{id}/verify`
+- Redirects to project dashboard once status reaches `live`
+
+### Site Endpoints
+
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `POST /api/sites` | POST | Yes | Create site, resolve DNS, return instructions |
+| `GET /api/sites` | GET | Yes | List user's sites |
+| `GET /api/sites/{id}` | GET | Yes | Site details + status |
+| `GET /api/sites/{id}/status` | GET | Yes | Lightweight status poll |
+| `POST /api/sites/{id}/verify` | POST | Yes | Manual DNS check trigger |
+| `DELETE /api/sites/{id}` | DELETE | Yes | Remove site, revoke cert |
+
+## 15. Graceful Lifecycle + Resilience
+
+### Application Lifecycle
+
+Single process, multiple goroutines, all respecting `context.Context` cancellation:
+
+```go
+func main() {
+    ctx, cancel := signal.NotifyContext(context.Background(),
+        syscall.SIGINT, syscall.SIGTERM)
+    defer cancel()
+    // ... init DB, server ...
+    var wg sync.WaitGroup
+    wg.Add(5)
+    go srv.runWithRecovery(ctx, &wg, "dns-verifier",    srv.dnsVerificationLoop)
+    go srv.runWithRecovery(ctx, &wg, "agent-loop",       srv.agentLoop)
+    go srv.runWithRecovery(ctx, &wg, "intel-refresher",  srv.intelRefreshLoop)
+    go srv.runWithRecovery(ctx, &wg, "session-cleanup",  srv.sessionCleanupLoop)
+    go srv.runWithRecovery(ctx, &wg, "pg-listener",      srv.pgListenLoop)
+    // ... start HTTP server, wait for signal, graceful shutdown ...
+}
+```
+
+### Goroutine Recovery
+
+Every background goroutine runs inside `runWithRecovery` which:
+- Catches panics, logs full stack trace
+- Restarts with exponential backoff (1s → 2s → 4s → ... → 5min max)
+- Exits cleanly on context cancellation (graceful shutdown)
+
+### Resilience Properties
+
+- **Backend restart**: All state is in PostgreSQL. Goroutines pick up pending work on next tick.
+- **Internet loss**: DNS lookups and feed fetches return errors, logged at WARN. Sites stay in current status, retried next tick.
+- **DB unavailable**: Health check returns 503. Goroutines log errors and retry with backoff.
+- **Graceful shutdown**: `SIGINT`/`SIGTERM` → cancel context → drain in-flight HTTP requests (10s timeout) → wait for goroutines to finish.
+
+### Structured Logging
+
+All logging uses `slog` with JSON output, Docker-friendly:
+
+```json
+{"time":"2026-02-21T14:30:00Z","level":"INFO","msg":"site dns verified","site_id":42,"domain":"app.keanuc.net","duration_ms":23}
+```
+
+## 16. Reverse Proxy + TLS
+
+### Host-Header Routing
+
+Incoming requests are routed by `Host` header:
+- Host matches a registered site domain → `proxyHandler` (classify + reverse proxy)
+- Host doesn't match → `apiRouter` (Veil's own API, auth, dashboard, SSE)
+
+The proxy uses `httputil.ReverseProxy` with `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Real-IP` headers set for the upstream.
+
+If a site's status is not `live`, a setup page is shown instead. If a browser hits the root path (`Accept: text/html`), an info page is shown (matching the current Python `GET /p/{site_id}` behavior).
+
+### certmagic Auto-TLS
+
+- **On-demand TLS**: Certs provisioned automatically for verified domains via Let's Encrypt
+- **DecisionFunc**: Only issues certs for domains with status `active`/`ssl_provisioning`/`live`
+- **Staging CA**: Used in development (`VEIL_ENV != production`)
+- **Cert storage**: Filesystem (`~/.local/share/certmagic/`), mounted as Docker volume
+
+### Docker Compose
+
+Two containers: `veil` (Go binary) + `db` (PostgreSQL 18 Alpine).
+
+```yaml
+services:
+  veil:
+    build: ./go-backend
+    ports: ["443:443", "80:80"]
+    volumes: [certs:/root/.local/share/certmagic]
+    environment:
+      - DATABASE_URL=postgres://veil:${DB_PASSWORD}@db:5432/veil?sslmode=disable
+      - VEIL_PROXY_CNAME=router.reveil.tech
+      - VEIL_DASHBOARD_DOMAIN=app.reveil.tech
+    depends_on:
+      db: { condition: service_healthy }
+  db:
+    image: postgres:18-alpine
+    volumes: [pgdata:/var/lib/postgresql/data]
+    environment: [POSTGRES_DB=veil, POSTGRES_USER=veil, POSTGRES_PASSWORD=${DB_PASSWORD}]
+volumes:
+  pgdata:
+  certs:
+```
+
+## 17. SSE Log Stream + Dashboard Data
+
+### Architecture
+
+PostgreSQL `LISTEN/NOTIFY` triggers → Go `pgx` listener goroutine → SSE Hub (per-site fan-out) → browser `EventSource`.
+
+### SSE Hub
+
+Go in-memory pub/sub with per-site subscriber channels. Buffered channels (64) prevent slow clients from blocking the notification loop. Slow clients get events dropped with a WARN log.
+
+### SSE HTTP Handler
+
+`GET /api/stream/events?site_id=X` — requires auth, verifies site ownership, then:
+1. **Hydrate**: sends recent requests (20), agent logs (10), and current stats as initial events
+2. **Stream**: fans out live events from the SSE hub
+3. **Keepalive**: sends `": keepalive"` comment every 30s to prevent proxy timeouts
+4. **Disconnect**: cleans up subscription on client disconnect
+
+### Frontend
+
+Replaces current WebSocket with `EventSource` which auto-reconnects on disconnect with built-in exponential backoff.
+
+### REST Endpoints (fetch-once-on-load)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/sites/{id}/stats` | Request counts, block rate, rules version |
+| `GET /api/sites/{id}/threats` | Threat library with categories/severity |
+| `GET /api/sites/{id}/agents` | Agent log (last 50) |
+| `GET /api/sites/{id}/requests` | Request log (last 100) |
+| `GET /api/sites/{id}/rules` | Rule versions |
+| `GET /api/sites/{id}/pipeline` | Pipeline graph (nodes + edges for React Flow) |
+| `GET /api/analytics/threat-distribution` | Threats by category (from intelligence branch) |
+| `GET /api/compliance/report` | Security posture score + compliance status |
+
+### Pipeline Visualization
+
+`GET /api/sites/{id}/pipeline` returns a JSON DAG with nodes (IP Blocklists, CrowdSec Rules, Regex, Ollama, Crusoe, Claude, Decision Engine) and edges with labels. The frontend renders this as a read-only React Flow diagram. Nodes show live stats updated via SSE.
+
+## 18. GitHub Repo Connection
+
+### Incremental OAuth
+
+Initial login uses `read:user` scope only. Connecting a repo triggers a second OAuth flow requesting `repo` scope. The `repo`-scoped token is encrypted with AES-256-GCM (key from `TOKEN_ENCRYPTION_KEY` env var) and stored in `github_tokens`.
+
+### Agent Integration
+
+When the Patch agent identifies bypass categories, it can also search the connected repo for root causes:
+1. Build search query from threat category + payload patterns
+2. Search repo via GitHub Code Search API
+3. Fetch matching file contents
+4. Ask LLM to analyze whether the file contains the vulnerability source
+5. Write findings to `code_findings` table with file path, line numbers, snippet, suggested fix
+
+### Dashboard UX
+
+Setup tab shows "Source Code Integration" section: connected repo info, recent findings with file:line references, confidence scores, and actions (View code, Dismiss as false positive).
+
+### Repo Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `GET /api/sites/{id}/repos` | GET | List available repos |
+| `POST /api/sites/{id}/repos` | POST | Link repo to site |
+| `DELETE /api/sites/{id}/repos` | DELETE | Unlink repo |
+| `GET /api/sites/{id}/findings` | GET | List code findings |
+| `PATCH /api/sites/{id}/findings/{fid}` | PATCH | Update finding status |
+
+## 19. Intelligence & Compliance (from feat/intelligence-compliance)
+
+Ported from the `feat/intelligence-compliance` branch into the Go backend:
+
+### Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `GET /api/analytics/threat-distribution` | GET | Threats aggregated by category (total/patched/exposed) |
+| `GET /api/compliance/report` | GET | Security posture report: score, remediation history, agent activity, compliance status |
+
+### Compliance Scoring
+
+- `security_score` = percentage of threats remediated
+- `compliance_status` = "HIGH" if block_rate > 80%, else "MEDIUM"
+- Includes top 5 recent remediations with technique names and timestamps
+- Agent activity aggregated by agent name
+
+### Prompt Caching
+
+TTL-based prompt caching (30s) using `sync.RWMutex` to reduce database reads during classification hot path.
+
+## 20. Existing Worktrees (Reference)
 
 The four prototype worktrees remain available for reference:
 - `.worktrees/go-langchaingo` — LangChainGo approach
