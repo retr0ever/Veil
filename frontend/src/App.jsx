@@ -7,6 +7,7 @@ import { ProjectDashboardPage } from './pages/ProjectDashboardPage'
 import { DocsPage } from './pages/DocsPage'
 import { NavBar } from './components/NavBar'
 import { PUBLIC_NAV_LINKS } from './lib/navLinks'
+import { useAuth } from './hooks/useAuth'
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
@@ -53,6 +54,7 @@ function NotFoundPage() {
 const PUBLIC_ROUTES = ['/', '/demo', '/docs', '/auth']
 
 function App() {
+  const { user, loading: authLoading } = useAuth()
   const pathname = normalizePath(window.location.pathname)
   const projectId = getProjectId(pathname)
 
@@ -74,13 +76,18 @@ function App() {
 
   /* ── Public shell: NavBar + page, NO sidebar ── */
   if (isPublic) {
-    const activeHref = pathname === '/demo' ? '/demo' : pathname === '/docs' ? '/docs' : pathname === '/auth' ? '/auth' : '/'
+    const authLinkHref = !authLoading && user ? '/auth/logout' : '/auth'
+    const authLinkLabel = !authLoading && user ? 'SIGN OUT' : 'SIGN IN'
+    const publicNavLinks = PUBLIC_NAV_LINKS.map((link) => (
+      link.href === '/auth' ? { href: authLinkHref, label: authLinkLabel } : link
+    ))
+    const activeHref = pathname === '/demo' ? '/demo' : pathname === '/docs' ? '/docs' : pathname === '/auth' ? authLinkHref : '/'
 
     return (
       <div className="min-h-screen bg-[#1a1322] text-text">
         <div className="sticky top-0 z-50 bg-[#1a1322] px-6 pt-10 md:px-12 md:pt-8">
           <NavBar
-            links={PUBLIC_NAV_LINKS}
+            links={publicNavLinks}
             activeHref={activeHref}
             size="hero"
             showDivider
