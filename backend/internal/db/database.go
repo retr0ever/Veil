@@ -482,6 +482,14 @@ func (db *DB) GetThreats(ctx context.Context, siteID int) ([]Threat, error) {
 	return threats, nil
 }
 
+// MarkThreatTested updates a threat's tested_at timestamp and blocked status.
+func (db *DB) MarkThreatTested(ctx context.Context, threatID int64, blocked bool) error {
+	_, err := db.Pool.Exec(ctx,
+		`UPDATE threats SET tested_at = NOW(), blocked = $1 WHERE id = $2`,
+		blocked, threatID)
+	return err
+}
+
 // GetThreatDistribution returns threat counts grouped by category.
 func (db *DB) GetThreatDistribution(ctx context.Context) ([]ThreatCategory, error) {
 	rows, err := db.Pool.Query(ctx,

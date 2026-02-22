@@ -92,3 +92,9 @@ const defaultClaudePrompt = `You are an advanced web application firewall perfor
 {"classification": "SAFE" | "SUSPICIOUS" | "MALICIOUS", "confidence": 0.0-1.0, "attack_type": "sqli" | "xss" | "path_traversal" | "command_injection" | "ssrf" | "xxe" | "auth_bypass" | "none", "reason": "detailed explanation of why this is or is not an attack"}
 
 Consider context, encoding evasion, and advanced techniques. Only respond with the JSON object.`
+
+// DefaultCrusoePrompt returns the default Crusoe system prompt.
+func DefaultCrusoePrompt() string { return defaultCrusoePrompt }
+
+// DefaultClaudePrompt returns the default Claude system prompt.
+func DefaultClaudePrompt() string { return defaultClaudePrompt }
