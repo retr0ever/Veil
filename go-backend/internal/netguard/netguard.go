@@ -3,7 +3,11 @@
 // time) and the site creation handler (at registration time).
 package netguard
 
-import "net"
+import (
+	"net"
+	"os"
+	"strings"
+)
 
 // BlockedCIDRs are private/internal networks that upstreams must never resolve to.
 var BlockedCIDRs = func() []*net.IPNet {
@@ -25,6 +29,29 @@ var BlockedCIDRs = func() []*net.IPNet {
 	}
 	return nets
 }()
+
+// trustedHosts are hostnames that bypass SSRF checks (e.g. Docker container
+// names on the same network). Set via VEIL_TRUSTED_UPSTREAMS env var
+// (comma-separated hostnames like "veil-test-target:3001,other-svc:8080").
+var trustedHosts = func() map[string]bool {
+	m := make(map[string]bool)
+	raw := os.Getenv("VEIL_TRUSTED_UPSTREAMS")
+	if raw == "" {
+		return m
+	}
+	for _, h := range strings.Split(raw, ",") {
+		h = strings.TrimSpace(h)
+		if h != "" {
+			m[h] = true
+		}
+	}
+	return m
+}()
+
+// IsTrustedHost returns true if the host:port is in the trusted upstreams list.
+func IsTrustedHost(hostPort string) bool {
+	return trustedHosts[hostPort]
+}
 
 // IsBlocked returns true if the IP falls within a private/internal range.
 func IsBlocked(ip net.IP) bool {

@@ -23,6 +23,11 @@ import (
 var ssrfSafeDialer = &net.Dialer{Timeout: 10 * time.Second}
 
 func ssrfSafeDial(ctx context.Context, network, addr string) (net.Conn, error) {
+	// Allow explicitly trusted upstreams (e.g. container names on the same network).
+	if netguard.IsTrustedHost(addr) {
+		return ssrfSafeDialer.DialContext(ctx, network, addr)
+	}
+
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid address: %w", err)
