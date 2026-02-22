@@ -9,20 +9,20 @@ const AGENT_ITEMS = [
 
 const AGENT_DETAILS = {
   all: {
-    heading: 'Three agents. One goal.',
-    body: 'Peek discovers new attack techniques, Poke stress-tests Veil with variants, and Patch updates the rules - then verifies the fix by replaying the bypass.',
+    heading: 'Three agents. One loop.',
+    body: 'Peek finds new attack patterns, Poke tests Veil against them, and Patch turns bypasses into better detection + clear fix suggestions.',
   },
   peek: {
-    heading: 'PEEK: Threat Discovery',
-    body: 'Continuously collects emerging attack techniques and patterns, labels them by category and severity, and stores them in the threat intelligence database with sources.',
+    heading: 'PEEK: Discovery',
+    body: 'Scans security sources and extracts real attack techniques. Tags each one by type and severity, then saves it to your threat intel feed.',
   },
   poke: {
     heading: 'POKE: Red Team',
-    body: 'Generates attack variations and fires them at Veil’s own classifier. Logs what gets blocked vs. what slips through, and escalates any bypass as a report for patching.',
+    body: 'Mutates attacks into new variants and throws them at Veil. Records what got blocked, what slipped through, and generates a bypass report.',
   },
   patch: {
-    heading: 'PATCH: Adaptation',
-    body: 'Analyzes why a bypass worked, updates the detection prompts/rules, redeploys immediately, and verifies the fix by re-running the exact same attack until it’s blocked.',
+    heading: 'PATCH: Fix Guidance',
+    body: 'Reads the bypass report, cross-checks your GitHub code, and suggests what to change.',
   },
 }
 
@@ -94,11 +94,10 @@ export function LandingPage() {
             <div className="grid items-center gap-10 md:flex md:items-center md:justify-between md:gap-20">
               <div className="max-w-[900px]">
                 <h1 className="text-[44px] font-semibold leading-[1.08] text-[#f8f4fb] md:text-[56px]">
-                  The first self-improving firewall.
+                  The first agentic and continuously self-improving firewall.
                 </h1>
                 <p className="mt-6 text-[21px] leading-[1.55] text-[#cbc4d2] md:text-[25px]">
-                  Drop-in reverse proxy that blocks malicious requests before they reach your backend.
-                  When something bypasses, Veil red-teams itself and auto-patches its detection rules, then verifies the fix by replay.
+                  Protect any vibe-coded web-app with one URL change. Veil detects attacks in real time and turns incidents into code-aware fix recommendations by scanning your GitHub.
                 </p>
                 
               </div>
@@ -272,7 +271,7 @@ export function LandingPage() {
                   style={{ borderColor: activeAgentBorderColor }}
                 >
                   <div className={`transition-opacity duration-200 ${agentPanelVisible ? 'opacity-100' : 'opacity-0'}`}>
-                    <h3 className={`text-[22px] leading-tight text-[#f4eff7] md:text-[24px] ${activeAgent === 'all' ? 'text-center' : 'text-left'}`}>
+                    <h3 className="text-[22px] font-semibold leading-tight text-left text-[#f4eff7] md:text-[24px]">
                       {activeAgentDetails.heading}
                     </h3>
                     <p className="mt-3 text-[19px] leading-[1.6] text-[#d0c8da] md:text-[20px]">
@@ -315,7 +314,7 @@ export function LandingPage() {
                 style={{ borderColor: activeAgentBorderColor }}
               >
                 <div className={`transition-opacity duration-200 ${agentPanelVisible ? 'opacity-100' : 'opacity-0'}`}>
-                  <h3 className={`text-[22px] leading-tight text-[#f4eff7] ${activeAgent === 'all' ? 'text-center' : 'text-left'}`}>
+                  <h3 className="text-[22px] font-semibold leading-tight text-left text-[#f4eff7]">
                     {activeAgentDetails.heading}
                   </h3>
                   <p className="mt-3 text-[19px] leading-[1.6] text-[#d0c8da]">
