@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useVeilSocket } from '../hooks/useVeilSocket'
+import { getBaseUrl, proxyUrl as buildProxyUrl } from '../lib/baseUrl'
 import { StatsBar } from './StatsBar'
 import { RequestFeed } from './RequestFeed'
 import { AgentLog, AgentPipeline } from './AgentLog'
@@ -427,8 +428,11 @@ export function Dashboard({ site, activeSection = 'site' }) {
   const [testResults, setTestResults] = useState(null)
   const [cycleRunning, setCycleRunning] = useState(false)
   const [lastCycle, setLastCycle] = useState(null)
+  const [proxyUrl, setProxyUrl] = useState(buildProxyUrl(site.site_id))
 
-  const proxyUrl = `${window.location.origin}/p/${site.site_id}`
+  useEffect(() => {
+    getBaseUrl().then(() => setProxyUrl(buildProxyUrl(site.site_id)))
+  }, [site.site_id])
   const hasTraffic = requests.length > 0
 
   const copyUrl = () => {

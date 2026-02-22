@@ -98,36 +98,43 @@ export function LandingPage() {
                   Drop-in reverse proxy that blocks malicious requests before they reach your backend.
                   When something bypasses, Veil red-teams itself and auto-patches its detection rules, then verifies the fix by replay.
                 </p>
-                <div className="mt-5 flex items-center gap-0" aria-hidden="true">
-                  {[0, 1, 2].map((index) => (
-                    <img
-                      key={index}
-                      src="/svg/gang.png"
-                      alt=""
-                      className="h-auto w-[132px] object-contain md:w-[156px]"
-                    />
-                  ))}
-                </div>
+                
               </div>
 
               <div className="w-full md:w-[470px] md:shrink-0">
-                <a
-                  href={!loading && user ? '/app/projects' : '/auth'}
-                  className="block rounded-[12px] bg-[#f1b461] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
-                  style={{ color: '#1a1322' }}
-                >
-                  <span className="font-logo block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">OPEN</span>
-                  <span className="font-logo mt-0.5 block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROJECTS</span>
-                </a>
+                <div className="group relative">
+                  <img
+                    src="/svg/yellow_action.png"
+                    alt=""
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -left-12 -top-12 z-20 h-[56px] w-[56px] rotate-[-18deg] select-none object-contain opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                  />
+                  <a
+                    href={!loading && user ? '/app/projects' : '/auth'}
+                    className="relative z-10 block rounded-[12px] bg-[#f1b461] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                    style={{ color: '#1a1322' }}
+                  >
+                    <span className="font-logo block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">OPEN</span>
+                    <span className="font-logo mt-0.5 block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROJECTS</span>
+                  </a>
+                </div>
 
-                <a
-                  href={!loading && user ? '/app/onboarding' : '/auth'}
-                  className="mt-2.5 block rounded-[12px] bg-[#f0a9e6] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
-                  style={{ color: '#1a1322' }}
-                >
-                  <span className="font-logo block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">START</span>
-                  <span className="font-logo mt-0.5 block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROTECTING</span>
-                </a>
+                <div className="group relative mt-2.5">
+                  <img
+                    src="/svg/pink_action.png"
+                    alt=""
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -bottom-12 -right-12 z-20 h-[56px] w-[56px] rotate-[16deg] select-none object-contain opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                  />
+                  <a
+                    href={!loading && user ? '/app/onboarding' : '/auth'}
+                    className="relative z-10 block rounded-[12px] bg-[#f0a9e6] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                    style={{ color: '#1a1322' }}
+                  >
+                    <span className="font-logo block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">START</span>
+                    <span className="font-logo mt-0.5 block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROTECTING</span>
+                  </a>
+                </div>
               </div>
             </div>
           </div>
@@ -207,7 +214,7 @@ export function LandingPage() {
         >
           <div className="h-px w-full bg-[#848188]/70" />
           <div className="px-6 md:px-12">
-          <div className="mx-auto hidden w-[clamp(520px,50vw,960px)] sm:block">
+          <div className="mx-auto hidden w-[clamp(520px,50vw,960px)] pb-32 md:pb-36 sm:block">
             <div className="relative aspect-square w-full">
               <div className="pointer-events-none absolute inset-0 z-20">
                 <svg viewBox="0 0 1000 1000" className="h-full w-full" aria-hidden="true">
@@ -257,7 +264,7 @@ export function LandingPage() {
                 </div>
               </div>
 
-              <div className="absolute inset-x-[6%] top-[82%] z-0">
+              <div className="absolute inset-x-[4%] top-[85%] z-0">
                 <div
                   className="rounded-[6px] border bg-[#21192b] px-6 py-6 transition-colors duration-200 md:px-7 md:py-7"
                   style={{ borderColor: activeAgentBorderColor }}

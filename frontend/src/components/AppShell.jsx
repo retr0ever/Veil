@@ -89,6 +89,15 @@ const icons = {
       <path d="M5 5l10 10M15 5L5 15" />
     </svg>
   ),
+  'file-text': (
+    <svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.5 2H5a1.5 1.5 0 0 0-1.5 1.5v11A1.5 1.5 0 0 0 5 16h8a1.5 1.5 0 0 0 1.5-1.5V6L10.5 2z" fill="currentColor" opacity="0.1" />
+      <path d="M10.5 2H5a1.5 1.5 0 0 0-1.5 1.5v11A1.5 1.5 0 0 0 5 16h8a1.5 1.5 0 0 0 1.5-1.5V6L10.5 2z" />
+      <polyline points="10.5 2 10.5 6 14.5 6" />
+      <line x1="6.5" y1="9.5" x2="11.5" y2="9.5" />
+      <line x1="6.5" y1="12" x2="11.5" y2="12" />
+    </svg>
+  ),
 }
 
 function SidebarIcon({ name }) {
@@ -347,7 +356,7 @@ export function AppShell({
           </Tooltip>
         )}
 
-        {links.map((link) => {
+        {links.filter((l) => l.key !== 'docs').map((link) => {
           const active = link.key === activeKey
 
           const handleClick = () => {
@@ -417,6 +426,56 @@ export function AppShell({
           return btn
         })}
       </nav>
+
+      {/* ── Docs link (pinned above footer) ── */}
+      {(() => {
+        const docsLink = links.find((l) => l.key === 'docs')
+        if (!docsLink) return null
+        const active = docsLink.key === activeKey
+        const handleClick = () => {
+          if (isMobile) setMobileOpen(false)
+          window.location.href = docsLink.href
+        }
+        const btn = (
+          <button
+            type="button"
+            onClick={handleClick}
+            className={`
+              group/nav relative flex w-full items-center
+              text-[19px] transition-colors duration-150
+              ${collapsed && !isMobile
+                ? 'mx-auto h-9 w-9 justify-center rounded-md'
+                : 'mx-3 gap-3.5 rounded-lg px-3.5 py-2.5'
+              }
+              ${active
+                ? 'bg-white/[0.07] text-text font-medium'
+                : 'bg-transparent text-muted hover:bg-white/[0.04] hover:text-dim'
+              }
+            `}
+            title={collapsed && !isMobile ? docsLink.label : undefined}
+          >
+            {active && (!collapsed || isMobile) && (
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 h-[18px] w-[2.5px] rounded-r-full bg-agent" aria-hidden="true" />
+            )}
+            {active && collapsed && !isMobile && (
+              <span className="absolute -left-[2px] top-1/2 -translate-y-1/2 h-[18px] w-[2.5px] rounded-r-full bg-agent" aria-hidden="true" />
+            )}
+            <span className="shrink-0 flex items-center justify-center w-[20px] h-[20px]">
+              <SidebarIcon name={docsLink.icon} />
+            </span>
+            {(!collapsed || isMobile) && (
+              <span className="truncate">{docsLink.label}</span>
+            )}
+          </button>
+        )
+        return (
+          <div className="shrink-0 overflow-hidden pb-1 pt-1">
+            {collapsed && !isMobile ? (
+              <Tooltip text={docsLink.label} sidebarWidth={SIDEBAR_WIDTH_COLLAPSED}>{btn}</Tooltip>
+            ) : btn}
+          </div>
+        )
+      })()}
 
       {/* ── User footer ── */}
       {user && (

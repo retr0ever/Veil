@@ -3,9 +3,10 @@ import { useAuth } from '../hooks/useAuth'
 import { getProjectNames } from '../lib/projectNames'
 import { AppShell, LoadingSpinner } from '../components/AppShell'
 import { APP_SIDEBAR_LINKS } from '../lib/navLinks'
+import { getBaseUrl, proxyUrl as buildProxyUrl } from '../lib/baseUrl'
 
 function ProjectCard({ site, projectName }) {
-  const proxyUrl = `${window.location.origin}/p/${site.site_id}`
+  const proxyUrl = buildProxyUrl(site.site_id)
 
   return (
     <a
@@ -77,13 +78,13 @@ function ProjectsEmptyState() {
           <div
             className="absolute inset-0 rounded-full"
             style={{
-              background: 'radial-gradient(circle, rgba(212,167,218,0.15) 0%, transparent 70%)',
+              background: 'radial-gradient(circle, rgba(99,167,255,0.12) 0%, transparent 70%)',
               transform: 'scale(2.5)',
             }}
           />
-          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-surface">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-agent">
-              <path d="M12 2L3 7v5c0 5.25 3.75 9.75 9 11 5.25-1.25 9-5.75 9-11V7l-9-5z" />
+          <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-agent/20 bg-agent/5">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-agent">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
               <path d="M9 12l2 2 4-4" />
             </svg>
           </div>
@@ -127,6 +128,7 @@ export function ProjectsPage() {
 
     const load = async () => {
       try {
+        await getBaseUrl()
         const res = await fetch('/api/sites')
         if (!res.ok) throw new Error('Failed to load projects')
         const data = await res.json()

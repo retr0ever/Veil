@@ -29,6 +29,8 @@ load_dotenv()
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "veil-dev-secret-change-me")
+VEIL_PUBLIC_URL = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
+VEIL_PUBLIC_URL = f"https://{VEIL_PUBLIC_URL}" if VEIL_PUBLIC_URL else ""
 SESSION_COOKIE = "veil_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
@@ -326,7 +328,7 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 
-app = FastAPI(title="Veil", lifespan=lifespan)
+app = FastAPI(title="Veil", lifespan=lifespan, docs_url="/api/docs", redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,
@@ -561,6 +563,13 @@ async def classify_request(raw_request: str):
         "reason": final_result.get("reason", ""),
         "rules_version": rules["version"],
     }
+
+
+# --- Public config ---
+@app.get("/api/config")
+async def get_config():
+    """Return public-facing base URL so the frontend can build proxy URLs."""
+    return {"base_url": VEIL_PUBLIC_URL}
 
 
 # --- Site registration ---
