@@ -573,6 +573,7 @@ func (db *DB) CheckIPDecision(ctx context.Context, ip string) (*Decision, error)
 	var d Decision
 	var reason, source *string
 	var expiresAt *time.Time
+	var siteID *int
 	err := db.Pool.QueryRow(ctx,
 		`SELECT id, ip, decision_type, scope, duration_seconds, reason, source, confidence, created_at, expires_at, site_id
 		 FROM decisions
@@ -580,7 +581,7 @@ func (db *DB) CheckIPDecision(ctx context.Context, ip string) (*Decision, error)
 		   AND (expires_at IS NULL OR expires_at > NOW())
 		 ORDER BY CASE decision_type WHEN 'ban' THEN 0 WHEN 'captcha' THEN 1 WHEN 'throttle' THEN 2 ELSE 3 END
 		 LIMIT 1`, ip,
-	).Scan(&d.ID, &d.IP, &d.DecisionType, &d.Scope, &d.DurationSeconds, &reason, &source, &d.Confidence, &d.CreatedAt, &expiresAt, &d.SiteID)
+	).Scan(&d.ID, &d.IP, &d.DecisionType, &d.Scope, &d.DurationSeconds, &reason, &source, &d.Confidence, &d.CreatedAt, &expiresAt, &siteID)
 	if err != nil {
 		return nil, err
 	}
@@ -590,16 +591,23 @@ func (db *DB) CheckIPDecision(ctx context.Context, ip string) (*Decision, error)
 	if source != nil {
 		d.Source = *source
 	}
+	if siteID != nil {
+		d.SiteID = *siteID
+	}
 	d.ExpiresAt = expiresAt
 	return &d, nil
 }
 
 // InsertDecision creates a new IP decision (ban, captcha, throttle, or log_only).
 func (db *DB) InsertDecision(ctx context.Context, d *Decision) error {
+	var siteID any = d.SiteID
+	if d.SiteID == 0 {
+		siteID = nil // NULL for global decisions (no FK violation)
+	}
 	_, err := db.Pool.Exec(ctx,
 		`INSERT INTO decisions (ip, decision_type, scope, duration_seconds, reason, source, confidence, expires_at, site_id)
 		 VALUES ($1::inet, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		d.IP, d.DecisionType, d.Scope, d.DurationSeconds, d.Reason, d.Source, d.Confidence, d.ExpiresAt, d.SiteID)
+		d.IP, d.DecisionType, d.Scope, d.DurationSeconds, d.Reason, d.Source, d.Confidence, d.ExpiresAt, siteID)
 	return err
 }
 
@@ -635,7 +643,7 @@ func (db *DB) ListActiveDecisions(ctx context.Context, siteID int) ([]Decision, 
 		WHERE (expires_at IS NULL OR expires_at > NOW())`
 	args := []any{}
 	if siteID > 0 {
-		query += ` AND (site_id = $1 OR site_id = 0)`
+		query += ` AND (site_id = $1 OR site_id = 0 OR site_id IS NULL)`
 		args = append(args, siteID)
 	}
 	query += ` ORDER BY created_at DESC LIMIT 200`
@@ -651,7 +659,8 @@ func (db *DB) ListActiveDecisions(ctx context.Context, siteID int) ([]Decision, 
 		var d Decision
 		var reason, source *string
 		var expiresAt *time.Time
-		if err := rows.Scan(&d.ID, &d.IP, &d.DecisionType, &d.Scope, &d.DurationSeconds, &reason, &source, &d.Confidence, &d.CreatedAt, &expiresAt, &d.SiteID); err != nil {
+		var siteID *int
+		if err := rows.Scan(&d.ID, &d.IP, &d.DecisionType, &d.Scope, &d.DurationSeconds, &reason, &source, &d.Confidence, &d.CreatedAt, &expiresAt, &siteID); err != nil {
 			return nil, err
 		}
 		if reason != nil {
@@ -659,6 +668,9 @@ func (db *DB) ListActiveDecisions(ctx context.Context, siteID int) ([]Decision, 
 		}
 		if source != nil {
 			d.Source = *source
+		}
+		if siteID != nil {
+			d.SiteID = *siteID
 		}
 		d.ExpiresAt = expiresAt
 		out = append(out, d)
