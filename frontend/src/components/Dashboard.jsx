@@ -422,6 +422,7 @@ export function Dashboard({ site, activeSection = 'site' }) {
   const [lastCycle, setLastCycle] = useState(null)
   const [dnsStatus, setDnsStatus] = useState(null)
   const [verifying, setVerifying] = useState(false)
+  const [verifyCooldown, setVerifyCooldown] = useState(0)
   const [cnameValue, setCnameValue] = useState('')
   const [cnameCopied, setCnameCopied] = useState(false)
 
@@ -453,8 +454,17 @@ export function Dashboard({ site, activeSection = 'site' }) {
     setTimeout(() => setCnameCopied(false), 2000)
   }
 
+  // Cooldown ticker
+  useEffect(() => {
+    if (verifyCooldown <= 0) return
+    const t = setTimeout(() => setVerifyCooldown((v) => v - 1), 1000)
+    return () => clearTimeout(t)
+  }, [verifyCooldown])
+
   const verifyDns = async () => {
+    if (verifyCooldown > 0) return
     setVerifying(true)
+    setVerifyCooldown(30)
     try {
       await fetch(`/api/sites/${site.site_id}/verify`, { method: 'POST' })
       const res = await fetch(`/api/sites/${site.site_id}/status`)
@@ -737,11 +747,49 @@ export function Dashboard({ site, activeSection = 'site' }) {
             />
 
             <div className="px-6 py-8 space-y-6">
+              {/* ---- DNS Status Banner ---- */}
+              {(site.status === 'active' || dnsStatus?.status === 'active') ? (
+                <div className="flex items-center gap-3 rounded-xl border border-safe/20 bg-safe/[0.06] px-5 py-4">
+                  <div className="relative flex h-5 w-5 items-center justify-center">
+                    <span className="absolute inline-flex h-3 w-3 rounded-full bg-safe/30" style={{ animation: 'ping 2s cubic-bezier(0,0,0.2,1) infinite' }} />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-safe" />
+                  </div>
+                  <div>
+                    <p className="text-[15px] font-semibold text-safe">DNS verified — traffic is flowing through Veil</p>
+                    <p className="mt-0.5 text-[13px] text-dim">
+                      <span className="font-mono">{site.domain}</span> is pointed at Veil and all requests are being monitored.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 rounded-xl border border-suspicious/20 bg-suspicious/[0.06] px-5 py-4">
+                  <div className="relative flex h-5 w-5 items-center justify-center">
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-suspicious" />
+                  </div>
+                  <div>
+                    <p className="text-[15px] font-semibold text-suspicious">Pending DNS — not yet connected</p>
+                    <p className="mt-0.5 text-[13px] text-dim">
+                      Update your DNS to point <span className="font-mono text-text">{site.domain}</span> to Veil. Follow the instructions below.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* ---- Step 1: DNS ---- */}
               <div className="rounded-xl border border-border bg-surface/30 p-6">
                 <div className="flex items-start gap-4">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-peek/30 bg-peek/10">
-                    <span className="text-[15px] font-bold text-peek">1</span>
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border ${
+                    (site.status === 'active' || dnsStatus?.status === 'active')
+                      ? 'border-safe/30 bg-safe/10'
+                      : 'border-peek/30 bg-peek/10'
+                  }`}>
+                    {(site.status === 'active' || dnsStatus?.status === 'active') ? (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-safe">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                    ) : (
+                      <span className="text-[15px] font-bold text-peek">1</span>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-3">
@@ -797,10 +845,14 @@ export function Dashboard({ site, activeSection = 'site' }) {
                       <div className="mt-3 flex items-center gap-3">
                         <button
                           onClick={verifyDns}
-                          disabled={verifying}
-                          className="rounded-lg border border-border bg-transparent px-4 py-2 text-[13px] font-medium text-muted transition-all hover:border-dim hover:text-text disabled:opacity-40"
+                          disabled={verifying || verifyCooldown > 0}
+                          className="rounded-lg border border-border bg-transparent px-4 py-2 text-[13px] font-medium text-muted transition-all hover:border-dim hover:text-text disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          {verifying ? 'Checking...' : 'Verify DNS'}
+                          {verifying
+                            ? 'Checking...'
+                            : verifyCooldown > 0
+                              ? `Wait ${verifyCooldown}s`
+                              : 'Verify DNS'}
                         </button>
                         <span className="text-[12px] text-muted">Auto-checking every 15s</span>
                       </div>
