@@ -226,6 +226,9 @@ ALTER TABLE sites ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALS
 -- Add upstream_scheme column (http or https, default https)
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS upstream_scheme TEXT NOT NULL DEFAULT 'https';
 
+-- Add upstream_port column (default 443 for https)
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS upstream_port INTEGER NOT NULL DEFAULT 443;
+
 -- Clean CIDR suffixes from upstream_ip (e.g. 18.133.32.79/32 → 18.133.32.79)
 UPDATE sites SET upstream_ip = split_part(upstream_ip, '/', 1) WHERE upstream_ip LIKE '%/%';
 

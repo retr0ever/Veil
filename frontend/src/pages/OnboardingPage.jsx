@@ -55,6 +55,7 @@ export function OnboardingPage() {
   const [name, setName] = useState('')
   const [domain, setDomain] = useState('')
   const [scheme, setScheme] = useState('https')
+  const [port, setPort] = useState('443')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState(null)
@@ -136,6 +137,7 @@ export function OnboardingPage() {
           domain: cleanDomain,
           name: name.trim() || cleanDomain,
           scheme,
+          port: parseInt(port, 10) || (scheme === 'https' ? 443 : 80),
         }),
       })
 
@@ -244,22 +246,24 @@ export function OnboardingPage() {
                   </p>
                 </div>
 
-                {/* Project name + Protocol */}
-                <div className="grid grid-cols-[1fr_auto] gap-4">
-                  <div>
-                    <label htmlFor="project-name" className="mb-2 block text-[15px] font-medium text-dim">
-                      Project name
-                      <span className="ml-1.5 text-[13px] font-normal text-muted">(optional)</span>
-                    </label>
-                    <input
-                      id="project-name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g. Customer API"
-                      className="w-full rounded-lg border border-border bg-bg px-4 py-3 text-[16px] text-text placeholder:text-muted/50 transition-colors duration-150 focus:border-agent/50 focus:ring-1 focus:ring-agent/20"
-                      disabled={submitting}
-                    />
-                  </div>
+                {/* Project name */}
+                <div>
+                  <label htmlFor="project-name" className="mb-2 block text-[15px] font-medium text-dim">
+                    Project name
+                    <span className="ml-1.5 text-[13px] font-normal text-muted">(optional)</span>
+                  </label>
+                  <input
+                    id="project-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Customer API"
+                    className="w-full rounded-lg border border-border bg-bg px-4 py-3 text-[16px] text-text placeholder:text-muted/50 transition-colors duration-150 focus:border-agent/50 focus:ring-1 focus:ring-agent/20"
+                    disabled={submitting}
+                  />
+                </div>
+
+                {/* Protocol + Port */}
+                <div className="grid grid-cols-[auto_100px] gap-3">
                   <div>
                     <label className="mb-2 block text-[15px] font-medium text-dim">
                       Origin protocol
@@ -267,7 +271,7 @@ export function OnboardingPage() {
                     <div className="flex h-[50px] overflow-hidden rounded-lg border border-border bg-bg">
                       <button
                         type="button"
-                        onClick={() => setScheme('https')}
+                        onClick={() => { setScheme('https'); setPort('443') }}
                         disabled={submitting}
                         className={`flex items-center gap-1.5 px-4 text-[14px] font-medium transition-colors ${
                           scheme === 'https'
@@ -282,7 +286,7 @@ export function OnboardingPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setScheme('http')}
+                        onClick={() => { setScheme('http'); setPort('80') }}
                         disabled={submitting}
                         className={`flex items-center gap-1.5 px-4 text-[14px] font-medium transition-colors ${
                           scheme === 'http'
@@ -294,9 +298,25 @@ export function OnboardingPage() {
                       </button>
                     </div>
                   </div>
+                  <div>
+                    <label htmlFor="port" className="mb-2 block text-[15px] font-medium text-dim">
+                      Port
+                    </label>
+                    <input
+                      id="port"
+                      type="number"
+                      value={port}
+                      onChange={(e) => setPort(e.target.value)}
+                      placeholder={scheme === 'https' ? '443' : '80'}
+                      min="1"
+                      max="65535"
+                      className="w-full h-[50px] rounded-lg border border-border bg-bg px-4 text-[16px] text-text placeholder:text-muted/50 transition-colors duration-150 focus:border-agent/50 focus:ring-1 focus:ring-agent/20"
+                      disabled={submitting}
+                    />
+                  </div>
                 </div>
                 <p className="!mt-2 text-[13px] text-muted">
-                  Select the protocol your origin server uses. Most sites use HTTPS (port 443). Choose HTTP if your origin only supports port 80.
+                  Select the protocol and port your origin server uses. Defaults: HTTPS = 443, HTTP = 80. Override the port if your app runs on a non-standard port (e.g. 3001, 8080).
                 </p>
 
                 {/* Error */}

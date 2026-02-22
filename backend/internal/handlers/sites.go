@@ -33,6 +33,7 @@ type createSiteRequest struct {
 	Domain string `json:"domain"`
 	Name   string `json:"name,omitempty"`
 	Scheme string `json:"scheme,omitempty"` // upstream scheme: "http" or "https" (default "https")
+	Port   int    `json:"port,omitempty"`   // upstream port (default 443 for https, 80 for http)
 }
 
 type dnsInstructions struct {
@@ -109,12 +110,23 @@ func (sh *SiteHandler) CreateSite(w http.ResponseWriter, r *http.Request) {
 		scheme = "http"
 	}
 
+	// Determine upstream port (default based on scheme)
+	port := req.Port
+	if port <= 0 || port > 65535 {
+		if scheme == "https" {
+			port = 443
+		} else {
+			port = 80
+		}
+	}
+
 	site := &db.Site{
 		UserID:         user.ID,
 		Domain:         domain,
 		ProjectName:    req.Name,
 		UpstreamIP:     upstreamIP,
 		UpstreamScheme: scheme,
+		UpstreamPort:   port,
 		Status:         "pending",
 	}
 	if dns != nil {
@@ -168,9 +180,17 @@ func (sh *SiteHandler) ListSites(w http.ResponseWriter, r *http.Request) {
 		if scheme == "" {
 			scheme = "https"
 		}
+		port := s.UpstreamPort
+		if port <= 0 {
+			if scheme == "https" {
+				port = 443
+			} else {
+				port = 80
+			}
+		}
 		targetURL := "https://" + s.Domain
 		if upIP != "" && upIP != "0.0.0.0" {
-			targetURL = scheme + "://" + upIP
+			targetURL = scheme + "://" + upIP + ":" + strconv.Itoa(port)
 		}
 		result = append(result, map[string]any{
 			"site_id":    strconv.Itoa(s.ID),
@@ -183,6 +203,7 @@ func (sh *SiteHandler) ListSites(w http.ResponseWriter, r *http.Request) {
 			"status":          s.Status,
 			"upstream_ip":     upIP,
 			"upstream_scheme": scheme,
+			"upstream_port":   port,
 			"is_demo":         s.IsDemo,
 		})
 	}

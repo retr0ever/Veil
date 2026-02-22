@@ -30,6 +30,7 @@ type Site struct {
 	ProjectName    string     `json:"project_name,omitempty"`
 	UpstreamIP     string     `json:"upstream_ip"`
 	UpstreamScheme string     `json:"upstream_scheme"`
+	UpstreamPort   int        `json:"upstream_port"`
 	OriginalCNAME  string     `json:"original_cname,omitempty"`
 	Status         string     `json:"status"`
 	VerifiedAt     *time.Time `json:"verified_at,omitempty"`

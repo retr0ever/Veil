@@ -154,7 +154,15 @@ func (h *Handler) ProxyInfo(w http.ResponseWriter, r *http.Request, siteID int) 
 	if infoScheme == "" {
 		infoScheme = "https"
 	}
-	upstream := infoScheme + "://" + upIP
+	infoPort := site.UpstreamPort
+	if infoPort <= 0 {
+		if infoScheme == "https" {
+			infoPort = 443
+		} else {
+			infoPort = 80
+		}
+	}
+	upstream := infoScheme + "://" + upIP + ":" + strconv.Itoa(infoPort)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Veil Protected Endpoint</title>
@@ -279,7 +287,15 @@ func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.
 	if scheme == "" {
 		scheme = "https"
 	}
-	upstream := scheme + "://" + upstreamIP
+	port := site.UpstreamPort
+	if port <= 0 {
+		if scheme == "https" {
+			port = 443
+		} else {
+			port = 80
+		}
+	}
+	upstream := scheme + "://" + upstreamIP + ":" + strconv.Itoa(port)
 	forwardURL := upstream + path
 	if r.URL.RawQuery != "" {
 		forwardURL += "?" + r.URL.RawQuery
