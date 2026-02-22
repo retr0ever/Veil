@@ -36,28 +36,28 @@ const AGENT_BORDER_COLORS = {
 const HOW_IT_WORKS_STEPS = [
   {
     id: '01',
-    label: 'Drop-in reverse proxy',
-    detail: 'Point traffic at Veil instead of your backend - no code changes.',
+    label: 'Add your domain',
+    detail: 'Enter your domain, add a DNS record, and Veil verifies automatically.',
   },
   {
     id: '02',
-    label: 'Fast first-pass triage',
-    detail: 'Llama on Crusoe classifies SAFE / SUSPICIOUS / MALICIOUS.',
+    label: 'Traffic flows through Veil',
+    detail: 'Requests are forwarded instantly. Classification runs async so latency stays near zero.',
   },
   {
     id: '03',
-    label: 'Deep analysis on flagged traffic',
-    detail: 'Claude reviews suspicious requests for a final verdict + category.',
+    label: 'Classify and block',
+    detail: 'Regex catches obvious attacks inline. Claude analyses flagged traffic for a final verdict.',
   },
   {
     id: '04',
-    label: 'Block or forward instantly',
-    detail: 'Malicious is blocked; safe traffic reaches your backend unchanged.',
+    label: 'Agents improve your defences',
+    detail: 'Scout discovers attacks, Red Team tests them, Adapt patches gaps. Each cycle learns from the last.',
   },
   {
     id: '05',
-    label: 'Red-team -> patch -> verify',
-    detail: 'Agents generate bypasses and auto-update detection prompts.',
+    label: 'Scan your code for fixes',
+    detail: 'Connect GitHub and Veil scans your source code to suggest exactly where to fix vulnerabilities.',
   },
 ]
 
@@ -363,13 +363,22 @@ function HowItWorksPreview({ index }) {
   if (index === 0) {
     return (
       <div className="space-y-6">
-        <p className="text-[20px] tracking-[0.16em] text-[#c3bbce] md:text-[22px]">PROTECTED URL: https://veil.sh/p/site_47a8</p>
-        <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4 text-center text-[24px]">
-          <Node label="Client" />
-          <Arrow />
-          <Node label="VEIL" />
-          <Arrow />
-          <Node label="Upstream API" />
+        <p className="text-[18px] tracking-[0.12em] text-[#aaa1b7]">DNS SETUP</p>
+        <div className="overflow-hidden rounded-[10px] border border-[#6f687c]">
+          <div className="grid grid-cols-[80px_1fr_1fr] border-b border-[#6f687c] bg-[#1a1527] px-4 py-3 text-[16px] tracking-[0.12em] text-[#aaa1b7]">
+            <span>TYPE</span>
+            <span>NAME</span>
+            <span>VALUE</span>
+          </div>
+          <div className="grid grid-cols-[80px_1fr_1fr] bg-[#120d1e] px-4 py-4 text-[20px]">
+            <span className="text-[#f2c77a]">CNAME</span>
+            <span className="text-[#d0c8db]">api.yoursite.com</span>
+            <span className="text-[#8fd9a7]">router.reveil.tech</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 rounded-[8px] border border-[#8fd9a7]/30 bg-[#8fd9a7]/5 px-5 py-3">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#8fd9a7] animate-pulse" />
+          <span className="text-[20px] text-[#8fd9a7]">DNS verified - traffic is flowing through Veil</span>
         </div>
       </div>
     )
@@ -378,44 +387,64 @@ function HowItWorksPreview({ index }) {
   if (index === 1) {
     return (
       <div className="space-y-5">
-        <p className="text-[21px] text-[#d5cede]">Classification</p>
-        <ClassRow label="SAFE" pct={86} color="#8fd9a7" />
-        <ClassRow label="SUSPICIOUS" pct={47} color="#f2c77a" />
-        <ClassRow label="MALICIOUS" pct={64} color="#f09ca8" />
+        <p className="text-[18px] tracking-[0.12em] text-[#aaa1b7]">ASYNC PIPELINE</p>
+        <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4 text-center text-[22px]">
+          <Node label="Client" />
+          <Arrow />
+          <div className="rounded-[8px] border border-[#8fd9a7]/40 bg-[#8fd9a7]/5 px-4 py-5 text-[#8fd9a7]">
+            VEIL
+          </div>
+          <Arrow />
+          <Node label="Upstream" />
+        </div>
+        <div className="mt-2 flex items-center gap-3 rounded-[8px] border border-[#6f687c] bg-[#1a1527] px-5 py-3 text-[19px] text-[#b8aec4]">
+          <span className="h-2 w-2 rounded-full bg-[#f2c77a] animate-pulse" />
+          Classifying in background... 0ms added latency
+        </div>
       </div>
     )
   }
 
   if (index === 2) {
     return (
-      <div className="rounded-[10px] border border-[#7a7385] bg-[#120d1e] p-5">
-        <p className="text-[18px] tracking-[0.12em] text-[#d6cfde]">FINAL VERDICT</p>
-        <p className="mt-2 text-[40px] font-semibold text-[#f08a95]">MALICIOUS</p>
-        <p className="mt-1 text-[26px] text-[#f2cf90]">SQLi (High)</p>
-        <p className="mt-4 text-[23px] leading-[1.45] text-[#b8aec4]">
-          Pattern matched boolean-based injection payload in query parameter `id`.
-        </p>
+      <div className="space-y-4">
+        <div className="overflow-hidden rounded-[10px] border border-[#6f687c]">
+          <div className="grid grid-cols-[120px_1fr_100px] border-b border-[#6f687c] bg-[#1a1527] px-4 py-3 text-[16px] tracking-[0.12em] text-[#aaa1b7]">
+            <span>VERDICT</span>
+            <span>REQUEST</span>
+            <span>ACTION</span>
+          </div>
+          <div className="grid grid-cols-[120px_1fr_100px] border-b border-[#6f687c]/60 bg-[#261420] px-4 py-3 text-[20px]">
+            <span className="text-[#f08a95]">BLOCK</span>
+            <span className="font-mono text-[#d0c8db]">GET /users?id=' OR 1=1</span>
+            <span className="text-[#f08a95]">403</span>
+          </div>
+          <div className="grid grid-cols-[120px_1fr_100px] border-b border-[#6f687c]/60 bg-[#1a1527] px-4 py-3 text-[20px]">
+            <span className="text-[#f2c77a]">FLAG</span>
+            <span className="font-mono text-[#d0c8db]">POST /api/upload ..%2f%2f</span>
+            <span className="text-[#f2c77a]">REVIEW</span>
+          </div>
+          <div className="grid grid-cols-[120px_1fr_100px] bg-[#12211b] px-4 py-3 text-[20px]">
+            <span className="text-[#8fd9a7]">SAFE</span>
+            <span className="font-mono text-[#d0c8db]">GET /products?page=2</span>
+            <span className="text-[#8fd9a7]">200</span>
+          </div>
+        </div>
       </div>
     )
   }
 
   if (index === 3) {
     return (
-      <div className="overflow-hidden rounded-[10px] border border-[#6f687c]">
-        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c] bg-[#1a1527] px-4 py-3 text-[18px] tracking-[0.12em] text-[#aaa1b7]">
-          <span>STATUS</span>
-          <span>REQUEST</span>
-          <span>ACTION</span>
-        </div>
-        <div className="grid grid-cols-[150px_1fr_130px] border-b border-[#6f687c]/60 bg-[#261420] px-4 py-3 text-[22px]">
-          <span className="text-[#f08a95]">BLOCK</span>
-          <span className="text-[#d0c8db]">GET /users?id=' OR 1=1</span>
-          <span className="text-[#f08a95]">403</span>
-        </div>
-        <div className="grid grid-cols-[150px_1fr_130px] bg-[#12211b] px-4 py-3 text-[22px]">
-          <span className="text-[#8fd9a7]">FORWARD</span>
-          <span className="text-[#d0c8db]">GET /products?page=2</span>
-          <span className="text-[#8fd9a7]">200</span>
+      <div className="space-y-4">
+        <p className="text-[18px] tracking-[0.12em] text-[#aaa1b7]">IMPROVEMENT CYCLE</p>
+        <TimelineItem text="Scout discovered 4 new techniques" color="#F4B6EB" />
+        <TimelineItem text="Red Team tested defences - 2 bypasses" color="#f09ca8" />
+        <TimelineItem text="Adapt patched rules (round 1)" color="#f2c77a" />
+        <TimelineItem text="Re-test: all threats now blocked" color="#8fd9a7" />
+        <div className="flex items-center gap-3 rounded-[8px] border border-[#6f687c] bg-[#1a1527] px-5 py-3 text-[18px] text-[#b8aec4]">
+          <span className="h-2 w-2 rounded-full bg-[#B9A1F4]" />
+          Memory saved for next cycle
         </div>
       </div>
     )
@@ -423,9 +452,25 @@ function HowItWorksPreview({ index }) {
 
   return (
     <div className="space-y-4">
-      <TimelineItem text="BYPASS FOUND" color="#f09ca8" />
-      <TimelineItem text="PATCH DEPLOYED" color="#f2c77a" />
-      <TimelineItem text="REPLAY BLOCKED" color="#8fd9a7" />
+      <p className="text-[18px] tracking-[0.12em] text-[#aaa1b7]">CODE FINDINGS</p>
+      <div className="rounded-[10px] border border-[#6f687c] bg-[#120d1e] p-5">
+        <div className="flex items-center justify-between">
+          <p className="text-[20px] font-medium text-[#f08a95]">SQL Injection</p>
+          <span className="rounded-md bg-[#f08a95]/10 px-2.5 py-1 text-[15px] font-medium text-[#f08a95]">HIGH</span>
+        </div>
+        <p className="mt-2 font-mono text-[17px] text-[#aaa1b7]">src/db/queries.js:42</p>
+        <div className="mt-3 rounded-md bg-[#1a1527] px-4 py-3 font-mono text-[16px] leading-relaxed text-[#d0c8db]">
+          <span className="text-[#f08a95]">-</span> db.query("SELECT * FROM users WHERE id=" + req.id)<br />
+          <span className="text-[#8fd9a7]">+</span> db.query("SELECT * FROM users WHERE id=$1", [req.id])
+        </div>
+      </div>
+      <div className="rounded-[10px] border border-[#6f687c] bg-[#120d1e] p-5">
+        <div className="flex items-center justify-between">
+          <p className="text-[20px] font-medium text-[#f2c77a]">XSS</p>
+          <span className="rounded-md bg-[#f2c77a]/10 px-2.5 py-1 text-[15px] font-medium text-[#f2c77a]">MEDIUM</span>
+        </div>
+        <p className="mt-2 font-mono text-[17px] text-[#aaa1b7]">src/views/comment.ejs:18</p>
+      </div>
     </div>
   )
 }

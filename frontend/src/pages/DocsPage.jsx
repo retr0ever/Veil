@@ -30,7 +30,7 @@ Unlike static WAFs, Veil gets smarter over time. Its three-agent loop (Scout, Re
     content: `After creating a project, Veil generates a protected URL like:
 
 \`\`\`
-https://your-veil-instance.up.railway.app/p/SITE_ID
+https://your-veil-instance.example.com/p/SITE_ID
 \`\`\`
 
 Replace your upstream API calls with this URL. For example, if you normally call:
@@ -42,7 +42,7 @@ GET https://api.example.com/users/123
 Instead call:
 
 \`\`\`
-GET https://your-veil-instance.up.railway.app/p/SITE_ID/users/123
+GET https://your-veil-instance.example.com/p/SITE_ID/users/123
 \`\`\`
 
 All HTTP methods are supported (GET, POST, PUT, PATCH, DELETE). Headers, query parameters, and request bodies are forwarded transparently.`,

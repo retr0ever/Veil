@@ -50,11 +50,6 @@ func NewCompatHandler(
 // GetConfig handles GET /api/config — returns public base URL.
 func (ch *CompatHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	baseURL := os.Getenv("VEIL_PUBLIC_URL")
-	if baseURL == "" {
-		if domain := os.Getenv("RAILWAY_PUBLIC_DOMAIN"); domain != "" {
-			baseURL = "https://" + domain
-		}
-	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"base_url": baseURL})
 }
