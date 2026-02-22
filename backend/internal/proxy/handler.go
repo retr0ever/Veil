@@ -327,7 +327,9 @@ func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.
 	proxyReq.Header.Set("Host", site.Domain)
 	proxyReq.Header.Set("X-Forwarded-For", sourceIP)
 	proxyReq.Header.Set("X-Forwarded-Proto", "https")
-	proxyReq.Header.Set("X-Forwarded-Proto", "https")
+	// Request uncompressed content from origin — the proxy strips Content-Encoding
+	// so we must not forward compressed bodies the browser can't decode.
+	proxyReq.Header.Set("Accept-Encoding", "identity")
 
 	resp, err := proxyClient.Do(proxyReq)
 	if err != nil {
