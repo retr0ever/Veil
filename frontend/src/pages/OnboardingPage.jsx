@@ -59,7 +59,21 @@ export function OnboardingPage() {
   const [error, setError] = useState('')
   const [created, setCreated] = useState(null)
   const [verifying, setVerifying] = useState(false)
+  const [verifyCooldown, setVerifyCooldown] = useState(0)
   const [siteStatus, setSiteStatus] = useState(null)
+  const [repos, setRepos] = useState(null)
+  const [loadingRepos, setLoadingRepos] = useState(false)
+  const [selectedRepo, setSelectedRepo] = useState(null)
+  const [linkingRepo, setLinkingRepo] = useState(false)
+  const [repoLinked, setRepoLinked] = useState(false)
+  const [repoSearch, setRepoSearch] = useState('')
+
+  // Cooldown ticker for verify button
+  useEffect(() => {
+    if (verifyCooldown <= 0) return
+    const t = setTimeout(() => setVerifyCooldown((v) => v - 1), 1000)
+    return () => clearTimeout(t)
+  }, [verifyCooldown])
 
   // Poll for DNS verification after creation
   useEffect(() => {
@@ -131,8 +145,9 @@ export function OnboardingPage() {
   }
 
   const verifyDns = async () => {
-    if (!created) return
+    if (!created || verifyCooldown > 0) return
     setVerifying(true)
+    setVerifyCooldown(30)
     try {
       const res = await fetch(`/api/sites/${created.site_id}/verify`, { method: 'POST' })
       if (res.ok) {
@@ -140,7 +155,7 @@ export function OnboardingPage() {
         setSiteStatus({ status: site.status || site.Status || 'active' })
       } else {
         const body = await res.json().catch(() => ({}))
-        setError(body.error || 'DNS verification failed. Make sure your CNAME record is set.')
+        setError(body.error || 'DNS verification failed. Make sure your CNAME or ALIAS record is set.')
       }
     } catch {
       setError('Could not verify DNS. Try again in a moment.')
@@ -148,8 +163,43 @@ export function OnboardingPage() {
     setVerifying(false)
   }
 
+  // Load repos when DNS is verified
+  useEffect(() => {
+    if (!created || siteStatus?.status !== 'active' || repos !== null) return
+    setLoadingRepos(true)
+    fetch(`/api/sites/${created.site_id}/repos`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setRepos(data || []))
+      .catch(() => setRepos([]))
+      .finally(() => setLoadingRepos(false))
+  }, [created, siteStatus?.status, repos])
+
+  const linkRepo = async (repo) => {
+    if (!created || linkingRepo) return
+    setLinkingRepo(true)
+    setSelectedRepo(repo)
+    try {
+      const res = await fetch(`/api/sites/${created.site_id}/repos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          owner: repo.owner,
+          name: repo.name,
+          branch: repo.default_branch || 'main',
+        }),
+      })
+      if (res.ok) setRepoLinked(true)
+    } catch {}
+    setLinkingRepo(false)
+  }
+
   const isActive = siteStatus?.status === 'active'
   const instructions = created?.instructions
+  const showRepoStep = isActive && !repoLinked
+  const showDone = isActive && repoLinked
+  const filteredRepos = repos?.filter(r =>
+    r.full_name.toLowerCase().includes(repoSearch.toLowerCase())
+  ) || []
 
   return (
     <AppShell links={APP_SIDEBAR_LINKS} activeKey="new" user={user} logout={logout} pageTitle="New Project">
@@ -273,8 +323,8 @@ export function OnboardingPage() {
           /* ── DNS Instructions ── */
           <div className="w-full max-w-xl">
             <div className="flex flex-col items-center text-center">
-              {isActive ? (
-                /* Verified state */
+              {showDone ? (
+                /* All done — repo linked */
                 <>
                   <div className="relative mb-6">
                     <div className="absolute inset-0 animate-ping rounded-full bg-safe/10" style={{ animationDuration: '2s' }} />
@@ -284,9 +334,24 @@ export function OnboardingPage() {
                       </svg>
                     </div>
                   </div>
-                  <h2 className="text-[28px] font-semibold tracking-tight text-text">DNS verified</h2>
+                  <h2 className="text-[28px] font-semibold tracking-tight text-text">You're all set</h2>
                   <p className="mt-2 text-[16px] leading-relaxed text-dim">
-                    <span className="font-medium text-safe">{created.site?.domain || domain}</span> is now routing through Veil. All traffic is being monitored and protected.
+                    <span className="font-medium text-safe">{created.site?.domain || domain}</span> is protected and linked to <span className="font-medium text-text">{selectedRepo?.full_name}</span>. Veil will now scan your code for vulnerabilities matching detected attacks.
+                  </p>
+                </>
+              ) : showRepoStep ? (
+                /* Step 2: Link GitHub repo */
+                <>
+                  <div className="relative mb-6">
+                    <div className="relative flex h-20 w-20 items-center justify-center rounded-full border-2 border-safe/30 bg-safe/10">
+                      <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+                        <path d="M10 18.5L15.5 24L26 12" stroke="#8fd9a7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  </div>
+                  <h2 className="text-[28px] font-semibold tracking-tight text-text">DNS verified — now link your repo</h2>
+                  <p className="mt-2 text-[16px] leading-relaxed text-dim">
+                    Connect a GitHub repository so Veil's Patch agent can scan your source code for vulnerabilities matching real attacks.
                   </p>
                 </>
               ) : (
@@ -303,7 +368,7 @@ export function OnboardingPage() {
                   </div>
                   <h2 className="text-[28px] font-semibold tracking-tight text-text">Update your DNS</h2>
                   <p className="mt-2 text-[16px] leading-relaxed text-dim">
-                    Add a CNAME record to route traffic through Veil. This is all you need to do.
+                    Add a CNAME or ALIAS record to route traffic through Veil. This is all you need to do.
                   </p>
                 </>
               )}
@@ -327,7 +392,11 @@ export function OnboardingPage() {
                         <tr className="text-[14px]">
                           <td className="px-4 py-3">
                             <span className="rounded bg-agent/10 px-2 py-0.5 text-[13px] font-semibold text-agent">
-                              {instructions.record_type}
+                              CNAME
+                            </span>
+                            <span className="mx-1 text-[12px] text-muted">/</span>
+                            <span className="rounded bg-agent/10 px-2 py-0.5 text-[13px] font-semibold text-agent">
+                              ALIAS
                             </span>
                           </td>
                           <td className="px-4 py-3 font-mono text-text">{instructions.name}</td>
@@ -344,9 +413,12 @@ export function OnboardingPage() {
                 </div>
 
                 {/* Where to do this */}
-                <div className="rounded-lg border border-border/40 bg-bg/50 px-4 py-3">
+                <div className="rounded-lg border border-border/40 bg-bg/50 px-4 py-3 space-y-2">
                   <p className="text-[14px] leading-relaxed text-dim">
-                    Go to your DNS provider (Cloudflare, Namecheap, Route 53, etc.) and add this record. DNS changes typically propagate within a few minutes.
+                    Go to your DNS provider and add this record. DNS changes typically propagate within a few minutes.
+                  </p>
+                  <p className="text-[13px] leading-relaxed text-muted">
+                    Most providers support <span className="font-medium text-dim">CNAME</span> records. If yours doesn't (e.g. Vercel, DNSimple), use an <span className="font-medium text-dim">ALIAS</span> or <span className="font-medium text-dim">ANAME</span> record instead — they work the same way.
                   </p>
                 </div>
 
@@ -354,14 +426,16 @@ export function OnboardingPage() {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={verifyDns}
-                    disabled={verifying}
-                    className="flex items-center gap-2.5 rounded-lg bg-text px-5 py-3 text-[15px] font-semibold text-bg transition-opacity hover:opacity-90 disabled:opacity-40"
+                    disabled={verifying || verifyCooldown > 0}
+                    className="flex items-center gap-2.5 rounded-lg bg-text px-5 py-3 text-[15px] font-semibold text-bg transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {verifying ? (
                       <>
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-bg/30 border-t-bg" />
                         Checking DNS...
                       </>
+                    ) : verifyCooldown > 0 ? (
+                      `Wait ${verifyCooldown}s`
                     ) : (
                       <>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -385,6 +459,70 @@ export function OnboardingPage() {
                     <p className="text-[14px] leading-relaxed text-blocked/90">{error}</p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Repo selector step */}
+            {showRepoStep && (
+              <div className="mt-6 rounded-xl border border-border/60 bg-surface p-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink-0 text-dim">
+                    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <h3 className="text-[16px] font-semibold text-text">Select a repository</h3>
+                </div>
+
+                {loadingRepos ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-agent/30 border-t-agent" />
+                    <span className="ml-3 text-[14px] text-muted">Loading your repositories...</span>
+                  </div>
+                ) : repos && repos.length > 0 ? (
+                  <>
+                    {repos.length > 5 && (
+                      <input
+                        value={repoSearch}
+                        onChange={(e) => setRepoSearch(e.target.value)}
+                        placeholder="Search repositories..."
+                        className="w-full rounded-lg border border-border bg-bg px-4 py-2.5 text-[14px] text-text placeholder:text-muted/50 focus:border-agent/50 focus:ring-1 focus:ring-agent/20"
+                      />
+                    )}
+                    <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-bg divide-y divide-border/50">
+                      {filteredRepos.slice(0, 20).map((repo) => (
+                        <button
+                          key={repo.full_name}
+                          onClick={() => linkRepo(repo)}
+                          disabled={linkingRepo}
+                          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-agent/5 disabled:opacity-40"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                          </svg>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[14px] font-medium text-text">{repo.full_name}</p>
+                            {repo.description && (
+                              <p className="truncate text-[12px] text-muted">{repo.description}</p>
+                            )}
+                          </div>
+                          {linkingRepo && selectedRepo?.full_name === repo.full_name && (
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-agent/30 border-t-agent" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-lg border border-border/40 bg-bg/50 px-4 py-6 text-center">
+                    <p className="text-[14px] text-dim">No repositories found. Make sure your GitHub account has repos, or skip this step for now.</p>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setRepoLinked(true)}
+                  className="text-[13px] text-muted transition-colors hover:text-text"
+                >
+                  Skip for now — I'll link a repo later
+                </button>
               </div>
             )}
 

@@ -360,7 +360,7 @@ function ConnectionBanner({ hasTraffic, site, dnsStatus }) {
         <div>
           <h3 className="text-[16px] font-semibold text-text">Waiting for DNS</h3>
           <p className="text-[14px] text-dim">
-            Point <span className="font-mono text-text">{site.domain}</span> to Veil via CNAME.
+            Point <span className="font-mono text-text">{site.domain}</span> to Veil via CNAME or ALIAS record.
             See the Setup tab for instructions.
           </p>
         </div>
@@ -1331,7 +1331,7 @@ export function Dashboard({ site, activeSection = 'site' }) {
                       <div>
                         <h3 className="text-[17px] font-semibold text-text">Update your DNS</h3>
                         <p className="mt-1 text-[14px] text-muted">
-                          Add a CNAME record to route <span className="font-mono text-text">{site.domain}</span> through Veil.
+                          Add a CNAME or ALIAS record to route <span className="font-mono text-text">{site.domain}</span> through Veil.
                         </p>
                       </div>
                       {(site.status === 'active' || dnsStatus?.status === 'active') && (
@@ -1355,6 +1355,8 @@ export function Dashboard({ site, activeSection = 'site' }) {
                           <tr className="text-[13px]">
                             <td className="px-4 py-3">
                               <span className="rounded bg-agent/10 px-2 py-0.5 text-[12px] font-semibold text-agent">CNAME</span>
+                              <span className="mx-1 text-[11px] text-muted">/</span>
+                              <span className="rounded bg-agent/10 px-2 py-0.5 text-[12px] font-semibold text-agent">ALIAS</span>
                             </td>
                             <td className="px-4 py-3 font-mono text-text">{site.domain}</td>
                             <td className="px-4 py-3">

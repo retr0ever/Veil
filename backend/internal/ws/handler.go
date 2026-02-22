@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,7 +16,19 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin:     func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		allowed := os.Getenv("ALLOWED_ORIGINS")
+		if allowed == "" {
+			return true // dev mode — allow all
+		}
+		origin := r.Header.Get("Origin")
+		for _, a := range strings.Split(allowed, ",") {
+			if strings.TrimSpace(a) == origin {
+				return true
+			}
+		}
+		return false
+	},
 }
 
 // Manager tracks active WebSocket connections and broadcasts events.

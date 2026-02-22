@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -128,6 +129,12 @@ func main() {
 
 	// Caddy on-demand TLS domain validation (no auth — called by Caddy internally)
 	r.Get("/api/caddy/check-domain", func(w http.ResponseWriter, r *http.Request) {
+		// Restrict to internal Caddy requests only
+		remoteIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+		if remoteIP != "127.0.0.1" && remoteIP != "::1" && remoteIP != "172.17.0.1" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		domain := r.URL.Query().Get("domain")
 		if domain == "" {
 			http.Error(w, "missing domain", http.StatusBadRequest)

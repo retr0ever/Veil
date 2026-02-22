@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	stdpath "path"
 	"strconv"
 	"strings"
 	"time"
@@ -120,13 +122,20 @@ func (h *Handler) PathProxy(w http.ResponseWriter, r *http.Request, siteID int, 
 		return
 	}
 
+	// Sanitize path to prevent traversal
+	clean := stdpath.Clean("/" + path)
+	if strings.HasPrefix(clean, "/..") {
+		jsonError(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
 	site, err := h.db.GetSiteByID(r.Context(), siteID)
 	if err != nil {
 		jsonError(w, "Site not found", http.StatusNotFound)
 		return
 	}
 
-	h.proxyRequest(w, r, site, "/"+path)
+	h.proxyRequest(w, r, site, clean)
 }
 
 // ProxyInfo serves the HTML info page at GET /p/{siteID}.
@@ -160,10 +169,23 @@ a{color:#63a7ff;text-decoration:none}a:hover{text-decoration:underline}</style><
 <p style="color:#e2dfe8;font-size:.85rem;margin-top:1.25rem">Upstream target:</p>
 <div class="url">%s</div>
 <p style="margin-top:1.5rem"><a href="/app/projects/%d">Open dashboard &rarr;</a></p>
-</div></body></html>`, site.Domain, upstream, site.ID)
+</div></body></html>`, html.EscapeString(site.Domain), html.EscapeString(upstream), site.ID)
 }
 
 func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.Site, path string) {
+	// Re-validate upstream IP at proxy time to prevent SSRF
+	upstreamHost := site.UpstreamIP
+	if idx := strings.Index(upstreamHost, "/"); idx != -1 {
+		upstreamHost = upstreamHost[:idx]
+	}
+	if host, _, err := net.SplitHostPort(upstreamHost); err == nil {
+		upstreamHost = host
+	}
+	if ip := net.ParseIP(upstreamHost); ip != nil && netguard.IsBlocked(ip) {
+		jsonError(w, "upstream resolves to blocked address", http.StatusForbidden)
+		return
+	}
+
 	// Build raw request string for classification
 	queryString := ""
 	if r.URL.RawQuery != "" {
@@ -230,7 +252,7 @@ func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.
 			"error":          "Blocked by Veil",
 			"classification": regexResult.Classification,
 			"attack_type":    regexResult.AttackType,
-			"reason":         regexResult.Reason,
+			"reason":         html.EscapeString(regexResult.Reason),
 		})
 		return
 	}
@@ -261,18 +283,24 @@ func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.
 		return
 	}
 
-	// Copy headers
+	// Copy headers — strip hop-by-hop and spoofable forwarded headers
+	strippedHeaders := map[string]bool{
+		"host": true, "connection": true, "transfer-encoding": true,
+		"content-length": true, "x-forwarded-host": true, "x-forwarded-proto": true,
+		"x-forwarded-for": true, "x-real-ip": true, "via": true,
+	}
 	for key, values := range r.Header {
-		lk := strings.ToLower(key)
-		if lk == "host" || lk == "connection" || lk == "transfer-encoding" || lk == "content-length" {
+		if strippedHeaders[strings.ToLower(key)] {
 			continue
 		}
 		for _, v := range values {
 			proxyReq.Header.Add(key, v)
 		}
 	}
+	// Set trusted forwarded headers from our own knowledge
 	proxyReq.Header.Set("Host", site.Domain)
 	proxyReq.Header.Set("X-Forwarded-For", sourceIP)
+	proxyReq.Header.Set("X-Forwarded-Proto", "https")
 	proxyReq.Header.Set("X-Forwarded-Proto", "https")
 
 	resp, err := proxyClient.Do(proxyReq)

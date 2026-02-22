@@ -134,7 +134,7 @@ func (sh *SiteHandler) CreateSite(w http.ResponseWriter, r *http.Request) {
 			RecordType: "CNAME",
 			Name:       domain,
 			Value:      sh.verifier.ProxyCNAME(),
-			Message:    fmt.Sprintf("Point %s to %s via CNAME record. Veil will automatically detect the change.", domain, sh.verifier.ProxyCNAME()),
+			Message:    fmt.Sprintf("Point %s to %s via CNAME or ALIAS record. Veil will automatically detect the change.", domain, sh.verifier.ProxyCNAME()),
 		},
 	})
 }
@@ -230,7 +230,7 @@ func (sh *SiteHandler) GetSiteStatus(w http.ResponseWriter, r *http.Request) {
 			RecordType: "CNAME",
 			Name:       site.Domain,
 			Value:      sh.verifier.ProxyCNAME(),
-			Message:    fmt.Sprintf("Point %s to %s via CNAME record.", site.Domain, sh.verifier.ProxyCNAME()),
+			Message:    fmt.Sprintf("Point %s to %s via CNAME or ALIAS record.", site.Domain, sh.verifier.ProxyCNAME()),
 		},
 	})
 }

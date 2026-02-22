@@ -96,14 +96,36 @@ func (v *Verifier) VerificationLoop(ctx context.Context) {
 }
 
 func (v *Verifier) verifySite(ctx context.Context, site db.Site) error {
+	// Check 1: CNAME record points directly to proxy
 	cname, err := net.LookupCNAME(site.Domain)
-	if err != nil {
-		return fmt.Errorf("lookup CNAME: %w", err)
+	if err == nil {
+		resolved := strings.TrimSuffix(cname, ".")
+		if resolved == v.proxyCNAME {
+			v.logger.Info("dns: site verified via CNAME", "domain", site.Domain)
+			return v.db.UpdateSiteStatus(ctx, site.ID, "active")
+		}
 	}
-	resolved := strings.TrimSuffix(cname, ".")
-	if resolved == v.proxyCNAME {
-		v.logger.Info("dns: site verified", "domain", site.Domain)
-		return v.db.UpdateSiteStatus(ctx, site.ID, "active")
+
+	// Check 2: ALIAS/ANAME records — domain A records match proxy A records.
+	// ALIAS records resolve server-side so LookupCNAME won't see them, but
+	// the domain's A records will point to the same IPs as the proxy CNAME.
+	siteIPs, err := net.LookupHost(site.Domain)
+	if err != nil || len(siteIPs) == 0 {
+		return nil
+	}
+	proxyIPs, err := net.LookupHost(v.proxyCNAME)
+	if err != nil || len(proxyIPs) == 0 {
+		return nil
+	}
+	proxySet := make(map[string]bool, len(proxyIPs))
+	for _, ip := range proxyIPs {
+		proxySet[ip] = true
+	}
+	for _, ip := range siteIPs {
+		if proxySet[ip] {
+			v.logger.Info("dns: site verified via ALIAS/A record match", "domain", site.Domain, "ip", ip)
+			return v.db.UpdateSiteStatus(ctx, site.ID, "active")
+		}
 	}
 	return nil
 }
