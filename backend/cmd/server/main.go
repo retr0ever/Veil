@@ -80,8 +80,16 @@ func main() {
 		logger.Info("mem0 memory layer disabled (MEM0_API_KEY not set)")
 	}
 
-	// Agent loop
-	agentLoop := agents.NewLoop(database, pipeline, wsManager, logger, memClient)
+	// Repo scanner (only if token encryption is configured)
+	var scanner *repo.Scanner
+	var repoHandler *handlers.RepoHandler
+	if tokenEnc != nil {
+		scanner = repo.NewScanner(database, tokenEnc, logger)
+		repoHandler = handlers.NewRepoHandler(database, scanner, logger)
+	}
+
+	// Agent loop (scanner is nil when token encryption not configured)
+	agentLoop := agents.NewLoop(database, pipeline, wsManager, logger, memClient, scanner)
 
 	// Proxy handler
 	proxyHandler := proxy.NewHandler(database, pipeline, sseHub, limiter, logger)
@@ -91,13 +99,6 @@ func main() {
 	streamHandler := handlers.NewStreamHandler(sseHub, database)
 	dashHandler := handlers.NewDashboardHandler(database, logger)
 	compatHandler := handlers.NewCompatHandler(database, pipeline, proxyHandler, agentLoop, limiter, logger)
-
-	// Repo scanner and handler (only if token encryption is configured)
-	var repoHandler *handlers.RepoHandler
-	if tokenEnc != nil {
-		scanner := repo.NewScanner(database, tokenEnc, logger)
-		repoHandler = handlers.NewRepoHandler(database, scanner, logger)
-	}
 
 	// Build router
 	r := chi.NewRouter()
@@ -191,13 +192,15 @@ func main() {
 		// Repo connect (incremental OAuth)
 		api.Get("/auth/github/repo-connect", oauth.BeginRepoConnect)
 
-		// Repo linking and code findings (only if token encryption is configured)
+		// Repo linking, code findings, and scan (only if token encryption is configured)
 		if repoHandler != nil {
 			api.Get("/sites/{id}/repos", repoHandler.ListRepos)
 			api.Post("/sites/{id}/repos", repoHandler.LinkRepo)
 			api.Delete("/sites/{id}/repos", repoHandler.UnlinkRepo)
+			api.Get("/sites/{id}/repo", repoHandler.GetLinkedRepo)
 			api.Get("/sites/{id}/findings", repoHandler.GetFindings)
 			api.Patch("/sites/{id}/findings/{fid}", repoHandler.UpdateFinding)
+			api.Post("/sites/{id}/scan", repoHandler.TriggerScan)
 		}
 
 		// SSE stream

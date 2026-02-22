@@ -15,6 +15,7 @@ export const PROJECT_SIDEBAR_LINKS = [
   { key: 'site', href: '#overview', label: 'Overview', icon: 'grid' },
   { key: 'agents', href: '#agents', label: 'Agents', icon: 'cpu' },
   { key: 'threats', href: '#threats', label: 'Threats', icon: 'shield' },
+  { key: 'findings', href: '#findings', label: 'Findings', icon: 'code' },
   { key: 'setup', href: '#setup', label: 'Setup', icon: 'settings' },
 ]
 

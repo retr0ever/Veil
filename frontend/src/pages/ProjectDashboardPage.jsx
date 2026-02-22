@@ -136,7 +136,7 @@ export function ProjectDashboardPage({ siteId }) {
 
   const projectName = getProjectName(siteId)
   const dnsActive = site.status === 'active' || site.status === 'live'
-  const disabledKeys = dnsActive ? [] : ['site', 'agents', 'threats']
+  const disabledKeys = dnsActive ? [] : ['site', 'agents', 'threats', 'findings']
 
   // Force to setup tab when DNS isn't active
   const effectiveSection = !dnsActive && disabledKeys.includes(activeSection) ? 'setup' : activeSection

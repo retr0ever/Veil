@@ -724,6 +724,70 @@ func (db *DB) UpdateCodeFindingStatus(ctx context.Context, findingID int64, stat
 	return err
 }
 
+// GetSitesWithRepos returns all sites that have a linked GitHub repo.
+func (db *DB) GetSitesWithRepos(ctx context.Context) ([]Site, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT s.id, s.user_id, s.domain, s.project_name, s.upstream_ip, s.original_cname, s.status, s.verified_at, s.created_at
+		 FROM sites s INNER JOIN site_repos sr ON s.id = sr.site_id
+		 ORDER BY s.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sites []Site
+	for rows.Next() {
+		var s Site
+		var projectName, originalCNAME *string
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		if projectName != nil {
+			s.ProjectName = *projectName
+		}
+		if originalCNAME != nil {
+			s.OriginalCNAME = *originalCNAME
+		}
+		sites = append(sites, s)
+	}
+	return sites, rows.Err()
+}
+
+// AttackSummary represents a distinct attack type from recent blocked requests.
+type AttackSummary struct {
+	AttackType string
+	Payload    string
+	Reason     string
+}
+
+// GetRecentAttackTypes returns distinct attack types from recent blocked requests for a site.
+func (db *DB) GetRecentAttackTypes(ctx context.Context, siteID int, window time.Duration) ([]AttackSummary, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT DISTINCT ON (attack_type)
+		    attack_type, raw_request,
+		    COALESCE(classification, '') as reason
+		 FROM request_log
+		 WHERE site_id = $1
+		   AND blocked = true
+		   AND attack_type IS NOT NULL
+		   AND attack_type != ''
+		   AND timestamp > NOW() - $2::interval
+		 ORDER BY attack_type, timestamp DESC`,
+		siteID, fmt.Sprintf("%d seconds", int(window.Seconds())))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var summaries []AttackSummary
+	for rows.Next() {
+		var s AttackSummary
+		if err := rows.Scan(&s.AttackType, &s.Payload, &s.Reason); err != nil {
+			return nil, err
+		}
+		summaries = append(summaries, s)
+	}
+	return summaries, rows.Err()
+}
+
 // ---------------------------------------------------------------------------
 // Partition management
 // ---------------------------------------------------------------------------
