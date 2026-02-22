@@ -102,23 +102,39 @@ export function LandingPage() {
               </div>
 
               <div className="w-full md:w-[470px] md:shrink-0">
-                <a
-                  href={!loading && user ? '/app/projects' : '/auth'}
-                  className="block rounded-[12px] bg-[#f1b461] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
-                  style={{ color: '#1a1322' }}
-                >
-                  <span className="font-logo block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">OPEN</span>
-                  <span className="font-logo mt-0.5 block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROJECTS</span>
-                </a>
+                <div className="group relative">
+                  <img
+                    src="/svg/yellow_action.png"
+                    alt=""
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -left-12 -top-12 z-20 h-[56px] w-[56px] rotate-[-18deg] select-none object-contain opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                  />
+                  <a
+                    href={!loading && user ? '/app/projects' : '/auth'}
+                    className="relative z-10 block rounded-[12px] bg-[#f1b461] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                    style={{ color: '#1a1322' }}
+                  >
+                    <span className="font-logo block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">OPEN</span>
+                    <span className="font-logo mt-0.5 block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROJECTS</span>
+                  </a>
+                </div>
 
-                <a
-                  href={!loading && user ? '/app/onboarding' : '/auth'}
-                  className="mt-2.5 block rounded-[12px] bg-[#f0a9e6] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
-                  style={{ color: '#1a1322' }}
-                >
-                  <span className="font-logo block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">START</span>
-                  <span className="font-logo mt-0.5 block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROTECTING</span>
-                </a>
+                <div className="group relative mt-2.5">
+                  <img
+                    src="/svg/pink_action.png"
+                    alt=""
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -bottom-12 -right-12 z-20 h-[56px] w-[56px] rotate-[16deg] select-none object-contain opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                  />
+                  <a
+                    href={!loading && user ? '/app/onboarding' : '/auth'}
+                    className="relative z-10 block rounded-[12px] bg-[#f0a9e6] px-4 py-3.5 text-[#1a1322] transition duration-150 hover:-translate-y-[1px] hover:brightness-105"
+                    style={{ color: '#1a1322' }}
+                  >
+                    <span className="font-logo block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">START</span>
+                    <span className="font-logo mt-0.5 block text-[34px] leading-[0.9] font-medium tracking-[0.06em] !text-[#1a1322] md:text-[38px]">PROTECTING</span>
+                  </a>
+                </div>
               </div>
             </div>
           </div>
