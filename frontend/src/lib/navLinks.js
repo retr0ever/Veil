@@ -1,7 +1,6 @@
 export const PUBLIC_NAV_LINKS = [
   { href: '/', label: 'HOME' },
   { href: '/demo', label: 'DEMO' },
-  { href: '/docs', label: 'DOCS' },
   { href: '/auth', label: 'SIGN IN' },
 ]
 
