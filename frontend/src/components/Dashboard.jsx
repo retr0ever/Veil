@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSiteData } from '../hooks/useSiteData'
 import { StatsBar } from './StatsBar'
 import { AgentLog, AgentPipeline } from './AgentLog'
 import { ThreatTable } from './ThreatTable'
 import { BlockRateChart } from './BlockRateChart'
 import { ComplianceView } from './ComplianceView'
+import { FindingsPanel } from './FindingsPanel'
 import {
   humaniseRequest,
   humaniseAgentEvent,
@@ -50,6 +51,11 @@ const SECTION_META = {
     title: 'Threats',
     description: 'Discovered attack techniques',
     helpText: 'Every attack technique Veil has discovered or generated. Shows whether each one is now blocked or still needs patching.',
+  },
+  findings: {
+    title: 'Code Findings',
+    description: 'Vulnerabilities discovered in your source code',
+    helpText: 'When Veil detects attacks in your traffic, it scans your linked GitHub repository to find the exact vulnerable code. Each finding shows the file, line numbers, and a suggested fix.',
   },
   setup: {
     title: 'Setup',
@@ -412,10 +418,175 @@ function TestResultsSummary({ results }) {
 }
 
 /* ------------------------------------------------------------ */
+/*  Repo connect card (Setup tab)                                */
+/* ------------------------------------------------------------ */
+function RepoConnectCard({ siteId, repoInfo, setRepoInfo, repoLoading }) {
+  const [repos, setRepos] = useState([])
+  const [loadingRepos, setLoadingRepos] = useState(false)
+  const [linking, setLinking] = useState(false)
+  const [unlinking, setUnlinking] = useState(false)
+  const [selectedRepo, setSelectedRepo] = useState('')
+
+  const fetchRepos = async () => {
+    setLoadingRepos(true)
+    try {
+      const res = await fetch(`/api/sites/${siteId}/repos`)
+      if (res.ok) {
+        const data = await res.json()
+        setRepos(Array.isArray(data) ? data : [])
+      }
+    } catch {}
+    setLoadingRepos(false)
+  }
+
+  const linkRepo = async () => {
+    if (!selectedRepo) return
+    const repo = repos.find((r) => r.full_name === selectedRepo)
+    if (!repo) return
+    setLinking(true)
+    try {
+      const res = await fetch(`/api/sites/${siteId}/repos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          owner: repo.owner,
+          name: repo.name,
+          branch: repo.default_branch,
+        }),
+      })
+      if (res.ok) {
+        setRepoInfo({
+          linked: true,
+          repo_owner: repo.owner,
+          repo_name: repo.name,
+          default_branch: repo.default_branch,
+        })
+      }
+    } catch {}
+    setLinking(false)
+  }
+
+  const unlinkRepo = async () => {
+    setUnlinking(true)
+    try {
+      const res = await fetch(`/api/sites/${siteId}/repos`, { method: 'DELETE' })
+      if (res.ok || res.status === 204) {
+        setRepoInfo({ linked: false })
+      }
+    } catch {}
+    setUnlinking(false)
+  }
+
+  const isLinked = repoInfo?.linked === true
+
+  return (
+    <div className="rounded-xl border border-border bg-surface/30 p-6">
+      <div className="flex items-start gap-4">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border ${
+          isLinked ? 'border-safe/30 bg-safe/10' : 'border-agent/30 bg-agent/10'
+        }`}>
+          {isLinked ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-safe">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          ) : (
+            <span className="text-[15px] font-bold text-agent">3</span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-[17px] font-semibold text-text">Link GitHub repository</h3>
+              <p className="mt-1 text-[14px] text-muted">
+                {isLinked
+                  ? <>Repository <span className="font-mono text-text">{repoInfo.repo_owner}/{repoInfo.repo_name}</span> is linked. Veil will scan it for vulnerabilities.</>
+                  : 'Connect a repo so Veil can find vulnerable code when it detects attacks in your traffic.'
+                }
+              </p>
+            </div>
+            {isLinked && (
+              <span className="shrink-0 rounded-full bg-safe/15 px-3 py-1 text-[12px] font-semibold text-safe">
+                Linked
+              </span>
+            )}
+          </div>
+
+          {repoLoading ? (
+            <div className="mt-4 flex items-center gap-2 text-[13px] text-muted">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted/30 border-t-muted" />
+              Loading...
+            </div>
+          ) : isLinked ? (
+            <div className="mt-4 flex items-center gap-3">
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-bg px-3 py-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted">
+                  <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22" />
+                </svg>
+                <span className="text-[13px] font-mono text-text">{repoInfo.repo_owner}/{repoInfo.repo_name}</span>
+                <span className="text-[11px] text-muted">({repoInfo.default_branch})</span>
+              </div>
+              <button
+                onClick={unlinkRepo}
+                disabled={unlinking}
+                className="rounded-lg border border-blocked/30 px-3 py-1.5 text-[12px] font-medium text-blocked transition-all hover:bg-blocked/10 disabled:opacity-40"
+              >
+                {unlinking ? 'Unlinking...' : 'Unlink'}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {repos.length === 0 ? (
+                <button
+                  onClick={fetchRepos}
+                  disabled={loadingRepos}
+                  className="rounded-lg border border-border bg-transparent px-4 py-2 text-[13px] font-medium text-muted transition-all hover:border-dim hover:text-text disabled:opacity-40"
+                >
+                  {loadingRepos ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted/30 border-t-muted" />
+                      Loading repos...
+                    </span>
+                  ) : 'Choose repository'}
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedRepo}
+                    onChange={(e) => setSelectedRepo(e.target.value)}
+                    className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-[13px] text-text focus:border-agent/50 focus:outline-none"
+                  >
+                    <option value="">Select a repository...</option>
+                    {repos.map((r) => (
+                      <option key={r.full_name} value={r.full_name}>
+                        {r.full_name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={linkRepo}
+                    disabled={!selectedRepo || linking}
+                    className="shrink-0 rounded-lg bg-text px-4 py-2 text-[13px] font-semibold text-bg transition-opacity hover:opacity-90 disabled:opacity-40"
+                  >
+                    {linking ? 'Linking...' : 'Link'}
+                  </button>
+                </div>
+              )}
+              <p className="text-[12px] text-muted">
+                If you don't see your repos, make sure you've granted Veil access to your GitHub account with the <span className="font-mono">repo</span> scope.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------ */
 /*  Main Dashboard                                               */
 /* ------------------------------------------------------------ */
 export function Dashboard({ site, activeSection = 'site' }) {
-  const { requests, agentEvents, stats } = useSiteData(site.site_id)
+  const { requests, agentEvents, stats, findings, setFindings } = useSiteData(site.site_id)
   const [testRunning, setTestRunning] = useState(false)
   const [testResults, setTestResults] = useState(null)
   const [cycleRunning, setCycleRunning] = useState(false)
@@ -425,6 +596,8 @@ export function Dashboard({ site, activeSection = 'site' }) {
   const [verifyCooldown, setVerifyCooldown] = useState(0)
   const [cnameValue, setCnameValue] = useState('')
   const [cnameCopied, setCnameCopied] = useState(false)
+  const [repoInfo, setRepoInfo] = useState(null)
+  const [repoLoading, setRepoLoading] = useState(true)
 
   // Fetch DNS status on mount
   useEffect(() => {
@@ -445,6 +618,27 @@ export function Dashboard({ site, activeSection = 'site' }) {
       return () => clearInterval(interval)
     }
   }, [site.site_id, site.status])
+
+  // Fetch repo link status
+  useEffect(() => {
+    const fetchRepo = async () => {
+      try {
+        const res = await fetch(`/api/sites/${site.site_id}/repo`)
+        if (res.ok) {
+          const data = await res.json()
+          setRepoInfo(data)
+        }
+      } catch {}
+      setRepoLoading(false)
+    }
+    fetchRepo()
+  }, [site.site_id])
+
+  const handleFindingStatusChange = useCallback((findingId, newStatus) => {
+    setFindings((prev) =>
+      prev.map((f) => (f.id === findingId ? { ...f, status: newStatus } : f))
+    )
+  }, [setFindings])
 
   const hasTraffic = requests.length > 0
 
@@ -736,6 +930,31 @@ export function Dashboard({ site, activeSection = 'site' }) {
         )}
 
         {/* ================================================================ */}
+        {/*  FINDINGS SECTION                                                */}
+        {/* ================================================================ */}
+        {activeSection === 'findings' && (
+          <div className="mx-auto max-w-5xl">
+            <SectionHeader
+              title={SECTION_META.findings.title}
+              description={SECTION_META.findings.description}
+              helpText={SECTION_META.findings.helpText}
+            />
+            {repoLoading ? (
+              <div className="flex min-h-[200px] items-center justify-center">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-agent" />
+              </div>
+            ) : (
+              <FindingsPanel
+                siteId={site.site_id}
+                findings={findings}
+                onFindingStatusChange={handleFindingStatusChange}
+                repoLinked={repoInfo?.linked === true}
+              />
+            )}
+          </div>
+        )}
+
+        {/* ================================================================ */}
         {/*  SETUP SECTION                                                   */}
         {/* ================================================================ */}
         {activeSection === 'setup' && (
@@ -899,11 +1118,14 @@ export function Dashboard({ site, activeSection = 'site' }) {
                 </div>
               </div>
 
-              {/* ---- Step 3: Improve ---- */}
+              {/* ---- Step 3: Link Repository ---- */}
+              <RepoConnectCard siteId={site.site_id} repoInfo={repoInfo} setRepoInfo={setRepoInfo} repoLoading={repoLoading} />
+
+              {/* ---- Step 4: Improve ---- */}
               <div className="rounded-xl border border-border bg-surface/30 p-6">
                 <div className="flex items-start gap-4">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-patch/30 bg-patch/10">
-                    <span className="text-[15px] font-bold text-patch">3</span>
+                    <span className="text-[15px] font-bold text-patch">4</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-3">

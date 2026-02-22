@@ -89,6 +89,13 @@ const icons = {
       <path d="M5 5l10 10M15 5L5 15" />
     </svg>
   ),
+  code: (
+    <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
+      <path d="M6.5 5L3 9l3.5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M11.5 5L15 9l-3.5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="9" cy="9" r="1.2" fill="currentColor" opacity="0.4" />
+    </svg>
+  ),
   'file-text': (
     <svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M10.5 2H5a1.5 1.5 0 0 0-1.5 1.5v11A1.5 1.5 0 0 0 5 16h8a1.5 1.5 0 0 0 1.5-1.5V6L10.5 2z" fill="currentColor" opacity="0.1" />

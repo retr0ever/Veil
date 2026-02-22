@@ -9,6 +9,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 export function useSiteData(siteId) {
   const [requests, setRequests] = useState([])
   const [agentEvents, setAgentEvents] = useState([])
+  const [findings, setFindings] = useState([])
   const [stats, setStats] = useState({
     total_requests: 0,
     blocked_requests: 0,
@@ -73,10 +74,11 @@ export function useSiteData(siteId) {
     // 1. Fetch initial data from REST endpoints
     const hydrate = async () => {
       try {
-        const [reqRes, agentRes, statsRes] = await Promise.all([
+        const [reqRes, agentRes, statsRes, findingsRes] = await Promise.all([
           fetch(`/api/sites/${siteId}/requests`),
           fetch(`/api/sites/${siteId}/agents`),
           fetch(`/api/sites/${siteId}/stats`),
+          fetch(`/api/sites/${siteId}/findings`),
         ])
 
         if (cancelled) return
@@ -92,6 +94,10 @@ export function useSiteData(siteId) {
         if (statsRes.ok) {
           const data = await statsRes.json()
           setStats(normaliseStats(data))
+        }
+        if (findingsRes.ok) {
+          const data = await findingsRes.json()
+          setFindings(Array.isArray(data) ? data : [])
         }
       } catch {
         // Silently handle — components show empty states
@@ -132,6 +138,18 @@ export function useSiteData(siteId) {
       } catch {}
     })
 
+    es.addEventListener('finding', (e) => {
+      if (cancelled) return
+      try {
+        const data = JSON.parse(e.data)
+        setFindings((prev) => {
+          // Deduplicate by id
+          if (prev.some((f) => f.id === data.id)) return prev
+          return [data, ...prev]
+        })
+      } catch {}
+    })
+
     es.onerror = () => {
       // EventSource auto-reconnects; nothing to do
     }
@@ -143,5 +161,5 @@ export function useSiteData(siteId) {
     }
   }, [siteId, normaliseRequest, normaliseAgent, normaliseStats])
 
-  return { requests, agentEvents, stats }
+  return { requests, agentEvents, stats, findings, setFindings }
 }

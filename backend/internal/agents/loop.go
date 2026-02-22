@@ -13,6 +13,7 @@ import (
 	"github.com/veil-waf/veil-go/internal/classify"
 	"github.com/veil-waf/veil-go/internal/db"
 	"github.com/veil-waf/veil-go/internal/memory"
+	"github.com/veil-waf/veil-go/internal/repo"
 	"github.com/veil-waf/veil-go/internal/ws"
 )
 
@@ -21,6 +22,7 @@ type Loop struct {
 	db       *db.DB
 	pipeline *classify.Pipeline
 	ws       *ws.Manager
+	scanner  *repo.Scanner  // nil when token encryption not configured
 	logger   *slog.Logger
 	mem      *memory.Client // nil when MEM0_API_KEY not set
 	running  atomic.Bool
@@ -28,11 +30,12 @@ type Loop struct {
 }
 
 // NewLoop creates a new agent loop.
-func NewLoop(database *db.DB, pipeline *classify.Pipeline, wsManager *ws.Manager, logger *slog.Logger, mem *memory.Client) *Loop {
+func NewLoop(database *db.DB, pipeline *classify.Pipeline, wsManager *ws.Manager, logger *slog.Logger, mem *memory.Client, scanner *repo.Scanner) *Loop {
 	return &Loop{
 		db:       database,
 		pipeline: pipeline,
 		ws:       wsManager,
+		scanner:  scanner,
 		logger:   logger,
 		mem:      mem,
 	}
@@ -533,6 +536,66 @@ Only respond with the JSON object.`,
 	l.logAgent(ctx, "patch", "patch",
 		fmt.Sprintf("Rules v%d: fixed %d/%d bypasses. %s", newVersion, fixed, len(bypassing), patch.Reasoning),
 		fixed > 0)
+
+	// Code scanning: find vulnerable code in linked repos
+	l.runCodeScan(ctx, bypassing)
+}
+
+// runCodeScan scans linked repos for code vulnerable to the given attack types.
+func (l *Loop) runCodeScan(ctx context.Context, threats []db.Threat) {
+	if l.scanner == nil {
+		return
+	}
+
+	sites, err := l.db.GetSitesWithRepos(ctx)
+	if err != nil {
+		l.logger.Warn("patch: failed to get sites with repos", "err", err)
+		return
+	}
+	if len(sites) == 0 {
+		return
+	}
+
+	l.broadcast("patch", "running", "Scanning linked repos for vulnerable code...")
+
+	// Collect unique attack types from the bypassing threats
+	attackTypes := make(map[string]db.Threat)
+	for _, t := range threats {
+		if _, exists := attackTypes[t.Category]; !exists {
+			attackTypes[t.Category] = t
+		}
+	}
+
+	totalFindings := 0
+	for _, site := range sites {
+		// Also check recent blocked requests for this site
+		recentAttacks, _ := l.db.GetRecentAttackTypes(ctx, site.ID, 1*time.Hour)
+		for _, ra := range recentAttacks {
+			if _, exists := attackTypes[ra.AttackType]; !exists {
+				attackTypes[ra.AttackType] = db.Threat{
+					Category:   ra.AttackType,
+					RawPayload: ra.Payload,
+				}
+			}
+		}
+
+		for _, threat := range attackTypes {
+			findings, err := l.scanner.ScanAndAnalyze(ctx, site.ID, site.UserID,
+				threat.Category, threat.RawPayload, "", &threat.ID)
+			if err != nil {
+				l.logger.Warn("patch: code scan failed",
+					"site", site.ID, "attack", threat.Category, "err", err)
+				continue
+			}
+			totalFindings += len(findings)
+		}
+	}
+
+	if totalFindings > 0 {
+		l.logAgent(ctx, "patch", "code_scan",
+			fmt.Sprintf("Found %d vulnerable code locations across %d repos", totalFindings, len(sites)), true)
+		l.broadcast("patch", "done", fmt.Sprintf("Found %d code vulnerabilities", totalFindings))
+	}
 }
 
 func (l *Loop) logAgent(ctx context.Context, agent, action, detail string, success bool) {

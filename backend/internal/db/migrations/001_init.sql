@@ -251,3 +251,23 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_agent_log_notify ON agent_log;
 CREATE TRIGGER trg_agent_log_notify
     AFTER INSERT ON agent_log FOR EACH ROW EXECUTE FUNCTION notify_agent_log();
+
+-- Code findings notification trigger
+CREATE OR REPLACE FUNCTION notify_code_finding() RETURNS trigger AS $$
+BEGIN
+    PERFORM pg_notify('finding_stream', json_build_object(
+        'id', NEW.id, 'site_id', NEW.site_id, 'file_path', NEW.file_path,
+        'line_start', NEW.line_start, 'line_end', NEW.line_end,
+        'snippet', left(COALESCE(NEW.snippet, ''), 300),
+        'finding_type', NEW.finding_type, 'confidence', NEW.confidence,
+        'description', left(NEW.description, 300),
+        'suggested_fix', left(COALESCE(NEW.suggested_fix, ''), 300),
+        'status', NEW.status, 'created_at', NEW.created_at
+    )::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_code_finding_notify ON code_findings;
+CREATE TRIGGER trg_code_finding_notify
+    AFTER INSERT ON code_findings FOR EACH ROW EXECUTE FUNCTION notify_code_finding();

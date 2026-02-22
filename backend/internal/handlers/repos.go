@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -174,4 +175,68 @@ func (rh *RepoHandler) UpdateFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": req.Status})
+}
+
+// TriggerScan handles POST /api/sites/{id}/scan — triggers an immediate code scan.
+func (rh *RepoHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
+	siteID, ok := rh.getSiteID(w, r)
+	if !ok {
+		return
+	}
+	user := auth.GetUserFromCtx(r.Context())
+
+	siteRepo, err := rh.db.GetSiteRepo(r.Context(), siteID)
+	if err != nil || siteRepo == nil {
+		jsonError(w, "no repository linked to this site", http.StatusBadRequest)
+		return
+	}
+
+	// Get recent attack types for this site
+	attacks, err := rh.db.GetRecentAttackTypes(r.Context(), siteID, 24*time.Hour)
+	if err != nil || len(attacks) == 0 {
+		// Fall back to global threats
+		attacks = []db.AttackSummary{
+			{AttackType: "sqli", Payload: "' OR '1'='1", Reason: "SQL injection pattern"},
+			{AttackType: "xss", Payload: "<script>alert(1)</script>", Reason: "Cross-site scripting"},
+		}
+	}
+
+	totalFindings := 0
+	for _, attack := range attacks {
+		findings, err := rh.scanner.ScanAndAnalyze(r.Context(), siteID, user.ID,
+			attack.AttackType, attack.Payload, attack.Reason, nil)
+		if err != nil {
+			rh.logger.Warn("scan failed", "attack", attack.AttackType, "err", err)
+			continue
+		}
+		totalFindings += len(findings)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"findings_count": totalFindings,
+		"attacks_scanned": len(attacks),
+	})
+}
+
+// GetLinkedRepo handles GET /api/sites/{id}/repo — returns the linked repo info.
+func (rh *RepoHandler) GetLinkedRepo(w http.ResponseWriter, r *http.Request) {
+	siteID, ok := rh.getSiteID(w, r)
+	if !ok {
+		return
+	}
+	siteRepo, err := rh.db.GetSiteRepo(r.Context(), siteID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"linked": false})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"linked":         true,
+		"repo_owner":     siteRepo.RepoOwner,
+		"repo_name":      siteRepo.RepoName,
+		"default_branch": siteRepo.DefaultBranch,
+		"connected_at":   siteRepo.ConnectedAt,
+	})
 }

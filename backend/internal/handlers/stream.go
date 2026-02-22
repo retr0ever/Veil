@@ -75,6 +75,13 @@ func (sh *StreamHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		data, _ := json.Marshal(stats)
 		fmt.Fprintf(w, "event: stats\ndata: %s\n\n", data)
 	}
+
+	// Hydrate with open code findings
+	findings, _ := sh.db.GetCodeFindings(r.Context(), siteID)
+	for _, f := range findings {
+		data, _ := json.Marshal(f)
+		fmt.Fprintf(w, "event: finding\ndata: %s\n\n", data)
+	}
 	flusher.Flush()
 
 	// Subscribe to live events

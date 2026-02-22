@@ -34,7 +34,7 @@ func (pl *PGListener) Listen(ctx context.Context) {
 	}
 	defer conn.Release()
 
-	for _, ch := range []string{"request_stream", "agent_stream"} {
+	for _, ch := range []string{"request_stream", "agent_stream", "finding_stream"} {
 		if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", ch)); err != nil {
 			pl.logger.Error("pg-listen: LISTEN failed", "channel", ch, "err", err)
 			return
@@ -58,6 +58,8 @@ func (pl *PGListener) Listen(ctx context.Context) {
 			event.Type = "request"
 		case "agent_stream":
 			event.Type = "agent"
+		case "finding_stream":
+			event.Type = "finding"
 		}
 
 		var payload struct {
