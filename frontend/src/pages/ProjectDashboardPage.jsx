@@ -102,6 +102,11 @@ export function ProjectDashboardPage({ siteId }) {
     window.location.hash = key === 'site' ? 'overview' : key
   }, [])
 
+  // Allow Dashboard to update site status (e.g. when DNS is verified or repo linked)
+  const handleSiteUpdate = useCallback((updates) => {
+    setSite((prev) => prev ? { ...prev, ...updates } : prev)
+  }, [])
+
   // Auth loading or data loading — minimal shell, no sidebar
   if (authLoading || loading) {
     return (
@@ -142,11 +147,6 @@ export function ProjectDashboardPage({ siteId }) {
   const effectiveSection = !dnsActive && disabledKeys.includes(activeSection) ? 'setup' : activeSection
   const currentLink = PROJECT_SIDEBAR_LINKS.find((l) => l.key === effectiveSection)
   const pageTitle = currentLink?.label || 'Overview'
-
-  // Allow Dashboard to update site status (e.g. when DNS is verified or repo linked)
-  const handleSiteUpdate = useCallback((updates) => {
-    setSite((prev) => prev ? { ...prev, ...updates } : prev)
-  }, [])
 
   return (
     <AppShell
