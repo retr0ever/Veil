@@ -14,6 +14,7 @@ import (
 	"github.com/veil-waf/veil-go/internal/auth"
 	"github.com/veil-waf/veil-go/internal/db"
 	veildns "github.com/veil-waf/veil-go/internal/dns"
+	"github.com/veil-waf/veil-go/internal/netguard"
 )
 
 type SiteHandler struct {
@@ -86,6 +87,14 @@ func (sh *SiteHandler) CreateSite(w http.ResponseWriter, r *http.Request) {
 	upstreamIP := "0.0.0.0"
 	if dns != nil && len(dns.A) > 0 {
 		upstreamIP = dns.A[0]
+	}
+
+	// Block private/internal IPs to prevent SSRF through the proxy
+	if ip := net.ParseIP(upstreamIP); ip != nil && upstreamIP != "0.0.0.0" {
+		if netguard.IsBlocked(ip) {
+			jsonError(w, "upstream IP resolves to a private/internal address — this is not allowed for security reasons", http.StatusBadRequest)
+			return
+		}
 	}
 
 	site := &db.Site{

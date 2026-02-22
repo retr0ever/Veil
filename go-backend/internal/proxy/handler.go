@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,12 +14,52 @@ import (
 
 	"github.com/veil-waf/veil-go/internal/classify"
 	"github.com/veil-waf/veil-go/internal/db"
+	"github.com/veil-waf/veil-go/internal/netguard"
 	"github.com/veil-waf/veil-go/internal/ratelimit"
 	"github.com/veil-waf/veil-go/internal/sse"
 )
 
+// ssrfSafeDialer wraps the default dialer to reject connections to private IPs.
+var ssrfSafeDialer = &net.Dialer{Timeout: 10 * time.Second}
+
+func ssrfSafeDial(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address: %w", err)
+	}
+
+	// Resolve the host to IPs and check each one BEFORE connecting.
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		// If it's already an IP literal, parse directly.
+		ip := net.ParseIP(host)
+		if ip == nil {
+			return nil, fmt.Errorf("dns lookup failed: %w", err)
+		}
+		if netguard.IsBlocked(ip) {
+			return nil, fmt.Errorf("upstream %s resolves to blocked private IP %s", addr, ip)
+		}
+		return ssrfSafeDialer.DialContext(ctx, network, addr)
+	}
+
+	for _, ipAddr := range ips {
+		if netguard.IsBlocked(ipAddr.IP) {
+			return nil, fmt.Errorf("upstream %s resolves to blocked private IP %s", addr, ipAddr.IP)
+		}
+	}
+
+	// All IPs are safe — connect to the first one.
+	safeAddr := net.JoinHostPort(ips[0].IP.String(), port)
+	return ssrfSafeDialer.DialContext(ctx, network, safeAddr)
+}
+
 var proxyClient = &http.Client{
 	Timeout: 30 * time.Second,
+	Transport: &http.Transport{
+		DialContext:         ssrfSafeDial,
+		MaxIdleConnsPerHost: 20,
+		IdleConnTimeout:     90 * time.Second,
+	},
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
 			return fmt.Errorf("too many redirects")
