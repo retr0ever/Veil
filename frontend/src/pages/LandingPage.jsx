@@ -67,6 +67,13 @@ export function LandingPage() {
   const [agentPanelVisible, setAgentPanelVisible] = useState(true)
   const { user, loading } = useAuth()
 
+  // Redirect logged-in users to the dashboard
+  useEffect(() => {
+    if (!loading && user) {
+      window.location.href = '/app/projects'
+    }
+  }, [user, loading])
+
   useEffect(() => {
     setAgentPanelVisible(false)
     const timeout = window.setTimeout(() => setAgentPanelVisible(true), 24)
