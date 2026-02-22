@@ -101,10 +101,10 @@ export function LandingPage() {
             <div className="grid items-center gap-10 md:flex md:items-center md:justify-between md:gap-20">
               <div className="max-w-[900px]">
                 <h1 className="text-[44px] font-semibold leading-[1.08] text-[#f8f4fb] md:text-[56px]">
-                  The first agentic and continuously self-improving firewall.
+                  Protect vibecoded apps with the first agentic and continuously self-improving firewall.
                 </h1>
                 <p className="mt-6 text-[21px] leading-[1.55] text-[#cbc4d2] md:text-[25px]">
-                  Protect any vibe-coded web-app with one URL change. Veil detects attacks in real time and turns incidents into code-aware fix recommendations by scanning your GitHub.
+                  With one URL change, Veil intercepts attacks in real time and turns incidents into code-aware fix recommendations by scanning your GitHub.
                 </p>
                 
               </div>
