@@ -223,6 +223,12 @@ CREATE INDEX IF NOT EXISTS idx_code_findings_threat ON code_findings(threat_id);
 -- Add is_demo column if missing (safe for existing deployments)
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- Add upstream_scheme column (http or https, default https)
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS upstream_scheme TEXT NOT NULL DEFAULT 'https';
+
+-- Clean CIDR suffixes from upstream_ip (e.g. 18.133.32.79/32 → 18.133.32.79)
+UPDATE sites SET upstream_ip = split_part(upstream_ip, '/', 1) WHERE upstream_ip LIKE '%/%';
+
 -- ============================================================================
 -- Demo site seed data
 -- ============================================================================

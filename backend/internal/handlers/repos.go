@@ -91,6 +91,16 @@ func (rh *RepoHandler) LinkRepo(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Require DNS verification before linking repos
+	site, err := rh.db.GetSiteByID(r.Context(), siteID)
+	if err != nil || site == nil {
+		jsonError(w, "site not found", http.StatusNotFound)
+		return
+	}
+	if !site.IsDemo && site.Status != "active" && site.Status != "live" {
+		jsonError(w, "DNS must be verified before linking a repository", http.StatusBadRequest)
+		return
+	}
 	var req linkRepoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request body", http.StatusBadRequest)
@@ -181,6 +191,16 @@ func (rh *RepoHandler) UpdateFinding(w http.ResponseWriter, r *http.Request) {
 func (rh *RepoHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	siteID, ok := rh.getSiteID(w, r)
 	if !ok {
+		return
+	}
+	// Require DNS verification before running scans
+	site, err := rh.db.GetSiteByID(r.Context(), siteID)
+	if err != nil || site == nil {
+		jsonError(w, "site not found", http.StatusNotFound)
+		return
+	}
+	if !site.IsDemo && site.Status != "active" && site.Status != "live" {
+		jsonError(w, "DNS must be verified before running scans", http.StatusBadRequest)
 		return
 	}
 	user := auth.GetUserFromCtx(r.Context())

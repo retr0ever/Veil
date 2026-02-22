@@ -54,7 +54,7 @@ export function OnboardingPage() {
   const { user, loading: authLoading, logout } = useAuth()
   const [name, setName] = useState('')
   const [domain, setDomain] = useState('')
-  const [port, setPort] = useState('')
+  const [scheme, setScheme] = useState('https')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState(null)
@@ -135,7 +135,7 @@ export function OnboardingPage() {
         body: JSON.stringify({
           domain: cleanDomain,
           name: name.trim() || cleanDomain,
-          ...(port && parseInt(port, 10) > 0 ? { port: parseInt(port, 10) } : {}),
+          scheme,
         }),
       })
 
@@ -244,8 +244,8 @@ export function OnboardingPage() {
                   </p>
                 </div>
 
-                {/* Project name + Port */}
-                <div className="grid grid-cols-[1fr_120px] gap-4">
+                {/* Project name + Protocol */}
+                <div className="grid grid-cols-[1fr_auto] gap-4">
                   <div>
                     <label htmlFor="project-name" className="mb-2 block text-[15px] font-medium text-dim">
                       Project name
@@ -261,24 +261,42 @@ export function OnboardingPage() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="port" className="mb-2 block text-[15px] font-medium text-dim">
-                      Port
+                    <label className="mb-2 block text-[15px] font-medium text-dim">
+                      Origin protocol
                     </label>
-                    <input
-                      id="port"
-                      type="number"
-                      value={port}
-                      onChange={(e) => setPort(e.target.value)}
-                      placeholder="80"
-                      min="1"
-                      max="65535"
-                      className="w-full rounded-lg border border-border bg-bg px-4 py-3 text-[16px] text-text placeholder:text-muted/50 transition-colors duration-150 focus:border-agent/50 focus:ring-1 focus:ring-agent/20"
-                      disabled={submitting}
-                    />
+                    <div className="flex h-[50px] overflow-hidden rounded-lg border border-border bg-bg">
+                      <button
+                        type="button"
+                        onClick={() => setScheme('https')}
+                        disabled={submitting}
+                        className={`flex items-center gap-1.5 px-4 text-[14px] font-medium transition-colors ${
+                          scheme === 'https'
+                            ? 'bg-agent/15 text-agent border-r border-border'
+                            : 'text-muted hover:text-dim border-r border-border'
+                        }`}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
+                        </svg>
+                        HTTPS
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setScheme('http')}
+                        disabled={submitting}
+                        className={`flex items-center gap-1.5 px-4 text-[14px] font-medium transition-colors ${
+                          scheme === 'http'
+                            ? 'bg-agent/15 text-agent'
+                            : 'text-muted hover:text-dim'
+                        }`}
+                      >
+                        HTTP
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <p className="!mt-2 text-[13px] text-muted">
-                  Veil proxies to your origin over HTTP. Default port is 80 — change this if your app runs on a different port.
+                  Select the protocol your origin server uses. Most sites use HTTPS (port 443). Choose HTTP if your origin only supports port 80.
                 </p>
 
                 {/* Error */}

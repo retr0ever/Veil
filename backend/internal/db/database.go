@@ -178,9 +178,9 @@ func (db *DB) GetUserByID(ctx context.Context, id int) (*User, error) {
 // CreateSite inserts a new site and populates its ID and CreatedAt.
 func (db *DB) CreateSite(ctx context.Context, s *Site) error {
 	return db.Pool.QueryRow(ctx,
-		`INSERT INTO sites (user_id, domain, project_name, upstream_ip, original_cname, status)
-		 VALUES ($1, $2, $3, $4::inet, $5, $6) RETURNING id, created_at`,
-		s.UserID, s.Domain, s.ProjectName, s.UpstreamIP, s.OriginalCNAME, s.Status,
+		`INSERT INTO sites (user_id, domain, project_name, upstream_ip, upstream_scheme, original_cname, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
+		s.UserID, s.Domain, s.ProjectName, s.UpstreamIP, s.UpstreamScheme, s.OriginalCNAME, s.Status,
 	).Scan(&s.ID, &s.CreatedAt)
 }
 
@@ -189,9 +189,9 @@ func (db *DB) GetSiteByDomain(ctx context.Context, domain string) (*Site, error)
 	var s Site
 	var projectName, originalCNAME *string
 	err := db.Pool.QueryRow(ctx,
-		`SELECT id, user_id, domain, project_name, upstream_ip, original_cname, status, verified_at, created_at, is_demo
+		`SELECT id, user_id, domain, project_name, upstream_ip, upstream_scheme, original_cname, status, verified_at, created_at, is_demo
 		 FROM sites WHERE domain = $1`, domain,
-	).Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt, &s.IsDemo)
+	).Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &s.UpstreamScheme, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt, &s.IsDemo)
 	if err != nil {
 		return nil, err
 	}
@@ -209,9 +209,9 @@ func (db *DB) GetSiteByID(ctx context.Context, id int) (*Site, error) {
 	var s Site
 	var projectName, originalCNAME *string
 	err := db.Pool.QueryRow(ctx,
-		`SELECT id, user_id, domain, project_name, upstream_ip, original_cname, status, verified_at, created_at, is_demo
+		`SELECT id, user_id, domain, project_name, upstream_ip, upstream_scheme, original_cname, status, verified_at, created_at, is_demo
 		 FROM sites WHERE id = $1`, id,
-	).Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt, &s.IsDemo)
+	).Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &s.UpstreamScheme, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt, &s.IsDemo)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func (db *DB) GetSiteByID(ctx context.Context, id int) (*Site, error) {
 // GetSitesByUser retrieves all sites belonging to a user PLUS any demo sites, ordered by creation time (newest first).
 func (db *DB) GetSitesByUser(ctx context.Context, userID int) ([]Site, error) {
 	rows, err := db.Pool.Query(ctx,
-		`SELECT id, user_id, domain, project_name, upstream_ip, original_cname, status, verified_at, created_at, is_demo
+		`SELECT id, user_id, domain, project_name, upstream_ip, upstream_scheme, original_cname, status, verified_at, created_at, is_demo
 		 FROM sites WHERE user_id = $1 OR is_demo = TRUE ORDER BY is_demo ASC, created_at DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -237,7 +237,7 @@ func (db *DB) GetSitesByUser(ctx context.Context, userID int) ([]Site, error) {
 	for rows.Next() {
 		var s Site
 		var projectName, originalCNAME *string
-		if err := rows.Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt, &s.IsDemo); err != nil {
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &s.UpstreamScheme, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt, &s.IsDemo); err != nil {
 			return nil, err
 		}
 		if projectName != nil {
@@ -257,7 +257,7 @@ func (db *DB) GetSitesByUser(ctx context.Context, userID int) ([]Site, error) {
 // GetUnverifiedSites retrieves all sites with status 'pending' or 'verifying'.
 func (db *DB) GetUnverifiedSites(ctx context.Context) ([]Site, error) {
 	rows, err := db.Pool.Query(ctx,
-		`SELECT id, user_id, domain, project_name, upstream_ip, original_cname, status, verified_at, created_at, is_demo
+		`SELECT id, user_id, domain, project_name, upstream_ip, upstream_scheme, original_cname, status, verified_at, created_at, is_demo
 		 FROM sites WHERE status IN ('pending', 'verifying') ORDER BY created_at`)
 	if err != nil {
 		return nil, err
@@ -267,7 +267,7 @@ func (db *DB) GetUnverifiedSites(ctx context.Context) ([]Site, error) {
 	for rows.Next() {
 		var s Site
 		var projectName, originalCNAME *string
-		if err := rows.Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt, &s.IsDemo); err != nil {
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &s.UpstreamScheme, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt, &s.IsDemo); err != nil {
 			return nil, err
 		}
 		if projectName != nil {
@@ -807,7 +807,7 @@ func (db *DB) UpdateCodeFindingStatus(ctx context.Context, findingID int64, stat
 // GetSitesWithRepos returns all sites that have a linked GitHub repo.
 func (db *DB) GetSitesWithRepos(ctx context.Context) ([]Site, error) {
 	rows, err := db.Pool.Query(ctx,
-		`SELECT s.id, s.user_id, s.domain, s.project_name, s.upstream_ip, s.original_cname, s.status, s.verified_at, s.created_at, s.is_demo
+		`SELECT s.id, s.user_id, s.domain, s.project_name, s.upstream_ip, s.upstream_scheme, s.original_cname, s.status, s.verified_at, s.created_at, s.is_demo
 		 FROM sites s INNER JOIN site_repos sr ON s.id = sr.site_id
 		 ORDER BY s.id`)
 	if err != nil {
@@ -818,7 +818,7 @@ func (db *DB) GetSitesWithRepos(ctx context.Context) ([]Site, error) {
 	for rows.Next() {
 		var s Site
 		var projectName, originalCNAME *string
-		if err := rows.Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt, &s.IsDemo); err != nil {
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &s.UpstreamScheme, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt, &s.IsDemo); err != nil {
 			return nil, err
 		}
 		if projectName != nil {

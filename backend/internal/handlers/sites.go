@@ -32,7 +32,7 @@ type createSiteRequest struct {
 	URL    string `json:"url"`
 	Domain string `json:"domain"`
 	Name   string `json:"name,omitempty"`
-	Port   int    `json:"port,omitempty"` // upstream port (default 80)
+	Scheme string `json:"scheme,omitempty"` // upstream scheme: "http" or "https" (default "https")
 }
 
 type dnsInstructions struct {
@@ -90,6 +90,11 @@ func (sh *SiteHandler) CreateSite(w http.ResponseWriter, r *http.Request) {
 		upstreamIP = dns.A[0]
 	}
 
+	// Strip any CIDR suffix (e.g. /32 from inet conversion)
+	if idx := strings.Index(upstreamIP, "/"); idx != -1 {
+		upstreamIP = upstreamIP[:idx]
+	}
+
 	// Block private/internal IPs to prevent SSRF through the proxy
 	if ip := net.ParseIP(upstreamIP); ip != nil && upstreamIP != "0.0.0.0" {
 		if netguard.IsBlocked(ip) {
@@ -98,17 +103,19 @@ func (sh *SiteHandler) CreateSite(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Append port if specified (non-standard)
-	if req.Port > 0 && req.Port != 80 {
-		upstreamIP = fmt.Sprintf("%s:%d", upstreamIP, req.Port)
+	// Determine upstream scheme (default https)
+	scheme := "https"
+	if req.Scheme == "http" {
+		scheme = "http"
 	}
 
 	site := &db.Site{
-		UserID:      user.ID,
-		Domain:      domain,
-		ProjectName: req.Name,
-		UpstreamIP:  upstreamIP,
-		Status:      "pending",
+		UserID:         user.ID,
+		Domain:         domain,
+		ProjectName:    req.Name,
+		UpstreamIP:     upstreamIP,
+		UpstreamScheme: scheme,
+		Status:         "pending",
 	}
 	if dns != nil {
 		site.OriginalCNAME = dns.CNAME
@@ -152,21 +159,31 @@ func (sh *SiteHandler) ListSites(w http.ResponseWriter, r *http.Request) {
 	// Build Python-compatible response
 	result := make([]map[string]any, 0, len(sites))
 	for _, s := range sites {
+		// Strip any CIDR suffix from upstream IP
+		upIP := s.UpstreamIP
+		if idx := strings.Index(upIP, "/"); idx != -1 {
+			upIP = upIP[:idx]
+		}
+		scheme := s.UpstreamScheme
+		if scheme == "" {
+			scheme = "https"
+		}
 		targetURL := "https://" + s.Domain
-		if s.UpstreamIP != "" && s.UpstreamIP != "0.0.0.0" {
-			targetURL = "http://" + s.UpstreamIP
+		if upIP != "" && upIP != "0.0.0.0" {
+			targetURL = scheme + "://" + upIP
 		}
 		result = append(result, map[string]any{
 			"site_id":    strconv.Itoa(s.ID),
 			"target_url": targetURL,
 			"created_at": s.CreatedAt.Format("2006-01-02T15:04:05"),
 			// Extra fields for enhanced frontend
-			"id":           s.ID,
-			"domain":       s.Domain,
-			"project_name": s.ProjectName,
-			"status":       s.Status,
-			"upstream_ip":  s.UpstreamIP,
-			"is_demo":      s.IsDemo,
+			"id":              s.ID,
+			"domain":          s.Domain,
+			"project_name":    s.ProjectName,
+			"status":          s.Status,
+			"upstream_ip":     upIP,
+			"upstream_scheme": scheme,
+			"is_demo":         s.IsDemo,
 		})
 	}
 
