@@ -2,22 +2,18 @@ import { useState, useEffect, useMemo } from 'react'
 import { useVeilSocket } from '../hooks/useVeilSocket'
 import { getBaseUrl, proxyUrl as buildProxyUrl } from '../lib/baseUrl'
 import { StatsBar } from './StatsBar'
-import { RequestFeed } from './RequestFeed'
 import { AgentLog, AgentPipeline } from './AgentLog'
 import { ThreatTable } from './ThreatTable'
 import { BlockRateChart } from './BlockRateChart'
 import { ComplianceView } from './ComplianceView'
-import { NavBar } from './NavBar'
-import { APP_NAV_LINKS } from '../lib/navLinks'
-import { humaniseRequest, humaniseAgentEvent, humaniseAttackType, relativeTime } from '../lib/humanise'
-
-const tabs = [
-  { key: 'site', label: 'Your Site' },
-  { key: 'agents', label: 'Agents' },
-  { key: 'threats', label: 'Threat Library' },
-  { key: 'compliance', label: 'Intelligence' },
-  { key: 'setup', label: 'Setup' },
-]
+import {
+  humaniseRequest,
+  humaniseAgentEvent,
+  humaniseAttackType,
+  relativeTime,
+  attackCategory,
+  attackExplanation,
+} from '../lib/humanise'
 
 const TEST_SCENARIOS = [
   {
@@ -458,7 +454,9 @@ export function Dashboard({ site, activeSection = 'site' }) {
         const data = await res.json()
         setLastCycle(data)
       }
-    } catch { }
+    } catch {
+      // Keep UI responsive if the cycle endpoint fails.
+    }
     setCycleRunning(false)
   }
 
@@ -536,8 +534,6 @@ export function Dashboard({ site, activeSection = 'site' }) {
   }, [requests, agentEvents])
 
   const safeCount = requests.filter((r) => r.classification === 'SAFE').length
-  const sectionMeta = SECTION_META[activeSection] || SECTION_META.site
-
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -843,7 +839,9 @@ export function Dashboard({ site, activeSection = 'site' }) {
                       try {
                         const res = await fetch(`/api/sites/${site.site_id}`, { method: 'DELETE' })
                         if (res.ok) window.location.href = '/app/projects'
-                      } catch { }
+                      } catch {
+                        // Ignore delete errors here; user can retry.
+                      }
                     }}
                     className="shrink-0 rounded-lg border border-blocked/30 px-3.5 py-1.5 text-[13px] font-medium text-blocked transition-all hover:bg-blocked/10"
                   >
@@ -854,8 +852,8 @@ export function Dashboard({ site, activeSection = 'site' }) {
             </div>
           </div>
         )}
-        {/* ── Tab: Compliance & Analytics ── */}
-        {activeTab === 'compliance' && (
+        {/* ── Section: Compliance & Analytics ── */}
+        {activeSection === 'compliance' && (
           <ComplianceView />
         )}
       </div>
