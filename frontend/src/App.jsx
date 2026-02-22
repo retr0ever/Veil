@@ -6,6 +6,7 @@ import { ProjectsPage } from './pages/ProjectsPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { ProjectDashboardPage } from './pages/ProjectDashboardPage'
 import { DocsPage } from './pages/DocsPage'
+import { LegalPage } from './pages/LegalPage'
 import { NavBar } from './components/NavBar'
 import { PUBLIC_NAV_LINKS } from './lib/navLinks'
 import { useAuth } from './hooks/useAuth'
@@ -53,12 +54,13 @@ function NotFoundPage() {
  */
 
 const PUBLIC_ROUTES = ['/', '/demo', '/docs', '/auth']
+const LEGAL_ROUTES = ['/terms', '/privacy', '/security']
 
 function App() {
   const { user, loading: authLoading } = useAuth()
   const pathname = normalizePath(window.location.pathname)
   const projectId = getProjectId(pathname)
-  const shouldScaleUi = PUBLIC_ROUTES.includes(pathname)
+  const shouldScaleUi = PUBLIC_ROUTES.includes(pathname) || LEGAL_ROUTES.includes(pathname)
 
   useEffect(() => {
     const html = document.documentElement
@@ -87,6 +89,9 @@ function App() {
   else if (pathname === '/demo')          page = <DemoPage />
   else if (pathname === '/auth')          page = <AuthPage />
   else if (pathname === '/docs')          page = <DocsPage public />
+  else if (pathname === '/terms')         page = <LegalPage type="terms" />
+  else if (pathname === '/privacy')       page = <LegalPage type="privacy" />
+  else if (pathname === '/security')      page = <LegalPage type="security" />
   else if (pathname === '/app/projects')  page = <ProjectsPage />
   else if (pathname === '/app/onboarding') page = <OnboardingPage />
   else if (pathname === '/app/docs')      page = <DocsPage />
