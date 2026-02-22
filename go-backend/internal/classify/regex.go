@@ -84,7 +84,7 @@ func init() {
 				`(?i)(127\.0\.0\.1|0\.0\.0\.0|localhost|0x7f000001|\[::1\]|\[0:0:0:0:0:0:0:1\])`,
 				`(?i)(file://|gopher://|dict://|ftp://127|ftp://localhost)`,
 				`(?i)(\.internal\b|\.local\b|\.corp\b|\.home\b)`,
-				`(?i)(http://[0-9]+\b(?!/)|http://0x)`,
+				`(?i)(http://[0-9]+\b|http://0x)`,
 			),
 		},
 		{
