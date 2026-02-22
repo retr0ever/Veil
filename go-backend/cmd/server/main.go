@@ -116,6 +116,22 @@ func main() {
 		oauth.Logout(w, r)
 	})
 
+	// Caddy on-demand TLS domain validation (no auth — called by Caddy internally)
+	r.Get("/api/caddy/check-domain", func(w http.ResponseWriter, r *http.Request) {
+		domain := r.URL.Query().Get("domain")
+		if domain == "" {
+			http.Error(w, "missing domain", http.StatusBadRequest)
+			return
+		}
+		_, err := database.GetSiteByDomain(r.Context(), domain)
+		if err != nil {
+			http.Error(w, "unknown domain", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
 	// Classification endpoint (rate limited, no auth)
 	r.Post("/v1/classify", compatHandler.Classify)
 
