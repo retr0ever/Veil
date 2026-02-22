@@ -194,9 +194,6 @@ func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.
 		rawForLog = rawForLog[:500]
 	}
 
-	// Classify
-	result := h.pipeline.Classify(r.Context(), site.ID, rawRequest)
-
 	// Extract source IP
 	sourceIP := r.RemoteAddr
 	if fwd := r.Header.Get("X-Real-IP"); fwd != "" {
@@ -206,49 +203,29 @@ func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.
 		sourceIP = hp
 	}
 
-	// Log to DB
-	logEntry := &db.RequestLogEntry{
-		SiteID:         site.ID,
-		RawRequest:     rawForLog,
-		Classification: result.Classification,
-		Confidence:     float32(result.Confidence),
-		Classifier:     result.Classifier,
-		Blocked:        result.Blocked,
-		AttackType:     result.AttackType,
-		ResponseTimeMs: float32(result.ResponseTimeMs),
-		SourceIP:       sourceIP,
-	}
-	if err := h.db.InsertRequestLog(r.Context(), logEntry); err != nil {
-		h.logger.Error("failed to log request", "err", err)
-	}
+	// Phase 1: Instant regex classification — blocks obvious attacks inline
+	regexResult := classify.RegexClassify(rawRequest)
 
-	// Broadcast to SSE
-	if h.hub != nil {
-		eventData, _ := json.Marshal(map[string]any{
-			"type":           "request",
-			"timestamp":      time.Now().UTC().Format(time.RFC3339),
-			"message":        truncate(rawRequest, 120),
-			"classification": result.Classification,
-			"confidence":     result.Confidence,
-			"blocked":        result.Blocked,
-			"classifier":     result.Classifier,
-			"attack_type":    result.AttackType,
-		})
-		h.hub.Publish(strconv.Itoa(site.ID), sse.Event{Type: "request", Data: eventData})
-	}
+	if regexResult.Classification == "MALICIOUS" && regexResult.Confidence > 0.6 {
+		// Regex caught a clear attack — block immediately, run LLM in background for logging
+		h.logAndBroadcast(site, rawForLog, rawRequest, sourceIP, regexResult, true)
 
-	// Block if malicious
-	if result.Blocked {
+		// Fire off LLM classification in background for richer logging
+		go h.backgroundClassify(site, rawForLog, rawRequest, sourceIP)
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		json.NewEncoder(w).Encode(map[string]any{
 			"error":          "Blocked by Veil",
-			"classification": result.Classification,
-			"attack_type":    result.AttackType,
-			"reason":         result.Reason,
+			"classification": regexResult.Classification,
+			"attack_type":    regexResult.AttackType,
+			"reason":         regexResult.Reason,
 		})
 		return
 	}
+
+	// Phase 2: Regex says safe/suspicious — proxy immediately, run full LLM pipeline in background
+	go h.backgroundClassify(site, rawForLog, rawRequest, sourceIP)
 
 	// Forward to upstream — strip any CIDR suffix (e.g. /32 from inet conversion)
 	upstreamIP := site.UpstreamIP
@@ -310,6 +287,51 @@ func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.
 
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
+}
+
+// backgroundClassify runs the full LLM classification pipeline in a background goroutine.
+// It logs the result to DB and broadcasts via SSE.
+func (h *Handler) backgroundClassify(site *db.Site, rawForLog, rawRequest, sourceIP string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	result := h.pipeline.Classify(ctx, site.ID, rawRequest)
+	h.logAndBroadcast(site, rawForLog, rawRequest, sourceIP, result, result.Blocked)
+}
+
+// logAndBroadcast writes a request log entry and publishes an SSE event.
+func (h *Handler) logAndBroadcast(site *db.Site, rawForLog, rawRequest, sourceIP string, result *classify.Result, blocked bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	logEntry := &db.RequestLogEntry{
+		SiteID:         site.ID,
+		RawRequest:     rawForLog,
+		Classification: result.Classification,
+		Confidence:     float32(result.Confidence),
+		Classifier:     result.Classifier,
+		Blocked:        blocked,
+		AttackType:     result.AttackType,
+		ResponseTimeMs: float32(result.ResponseTimeMs),
+		SourceIP:       sourceIP,
+	}
+	if err := h.db.InsertRequestLog(ctx, logEntry); err != nil {
+		h.logger.Error("failed to log request", "err", err)
+	}
+
+	if h.hub != nil {
+		eventData, _ := json.Marshal(map[string]any{
+			"type":           "request",
+			"timestamp":      time.Now().UTC().Format(time.RFC3339),
+			"message":        truncate(rawRequest, 120),
+			"classification": result.Classification,
+			"confidence":     result.Confidence,
+			"blocked":        blocked,
+			"classifier":     result.Classifier,
+			"attack_type":    result.AttackType,
+		})
+		h.hub.Publish(strconv.Itoa(site.ID), sse.Event{Type: "request", Data: eventData})
+	}
 }
 
 func truncate(s string, maxLen int) string {
