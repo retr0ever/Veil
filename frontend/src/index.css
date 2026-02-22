@@ -78,6 +78,10 @@
   --font-mono: 'Source Serif Pro', 'Times New Roman', serif;
 }
 
+:root {
+  --app-scale: 0.75;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -86,6 +90,25 @@ html,
 body,
 #root {
   min-height: 100%;
+}
+
+html {
+  overflow-x: hidden;
+}
+
+@supports (zoom: 1) {
+  html {
+    zoom: var(--app-scale);
+  }
+}
+
+@supports not (zoom: 1) {
+  #root {
+    width: calc(100% / var(--app-scale));
+    min-height: calc(100vh / var(--app-scale));
+    transform: scale(var(--app-scale));
+    transform-origin: top left;
+  }
 }
 
 body {
