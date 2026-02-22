@@ -7,8 +7,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"strings"
+
 	"github.com/veil-waf/veil-go/internal/classify"
 	"github.com/veil-waf/veil-go/internal/db"
+	"github.com/veil-waf/veil-go/internal/memory"
 	"github.com/veil-waf/veil-go/internal/ws"
 )
 
@@ -18,17 +21,19 @@ type Loop struct {
 	pipeline *classify.Pipeline
 	ws       *ws.Manager
 	logger   *slog.Logger
+	mem      *memory.Client // nil when MEM0_API_KEY not set
 	running  atomic.Bool
 	cycleNum atomic.Int64
 }
 
 // NewLoop creates a new agent loop.
-func NewLoop(database *db.DB, pipeline *classify.Pipeline, wsManager *ws.Manager, logger *slog.Logger) *Loop {
+func NewLoop(database *db.DB, pipeline *classify.Pipeline, wsManager *ws.Manager, logger *slog.Logger, mem *memory.Client) *Loop {
 	return &Loop{
 		db:       database,
 		pipeline: pipeline,
 		ws:       wsManager,
 		logger:   logger,
+		mem:      mem,
 	}
 }
 
@@ -233,4 +238,75 @@ func safeBlockRate(total, blocked int64) float64 {
 		return 0
 	}
 	return float64(blocked) / float64(total) * 100
+}
+
+// remember stores a memory for the given agent. No-op if mem0 is not configured.
+func (l *Loop) remember(ctx context.Context, agent, observation string, meta map[string]any) {
+	if l.mem == nil {
+		return
+	}
+	err := l.mem.Add(ctx, &memory.AddRequest{
+		Messages: []memory.Message{
+			{Role: "assistant", Content: observation},
+		},
+		AgentID:  "veil-" + agent,
+		Metadata: meta,
+		Infer:    true,
+	})
+	if err != nil {
+		l.logger.Warn("mem0 add failed", "agent", agent, "err", err)
+		return
+	}
+	// Broadcast memory event to frontend
+	l.broadcast("memory", "stored", fmt.Sprintf("[%s] %s", agent, truncateStr(observation, 150)))
+}
+
+// recall searches memories relevant to the given query for an agent.
+// Returns empty string if mem0 is not configured or search fails.
+func (l *Loop) recall(ctx context.Context, agent, query string) string {
+	if l.mem == nil {
+		return ""
+	}
+	memories, err := l.mem.Search(ctx, &memory.SearchRequest{
+		Query:   query,
+		AgentID: "veil-" + agent,
+		TopK:    5,
+	})
+	if err != nil {
+		l.logger.Warn("mem0 search failed", "agent", agent, "err", err)
+		return ""
+	}
+	if len(memories) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("Relevant memories from previous cycles:\n")
+	for i, m := range memories {
+		fmt.Fprintf(&sb, "%d. %s\n", i+1, m.Memory)
+	}
+	return sb.String()
+}
+
+// GetMemories returns recent memories for the given agent. Used by the API.
+func (l *Loop) GetMemories(ctx context.Context, agent string) []memory.Memory {
+	if l.mem == nil {
+		return nil
+	}
+	memories, err := l.mem.Search(ctx, &memory.SearchRequest{
+		Query:   "recent activity, discoveries, bypasses, patches, and learnings",
+		AgentID: "veil-" + agent,
+		TopK:    10,
+	})
+	if err != nil {
+		l.logger.Warn("failed to fetch memories", "err", err)
+		return nil
+	}
+	return memories
+}
+
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
 }
