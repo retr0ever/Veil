@@ -97,17 +97,23 @@ html {
 }
 
 @supports (zoom: 1) {
-  html {
+  html.route-scale-75 {
     zoom: var(--app-scale);
   }
 }
 
 @supports not (zoom: 1) {
-  #root {
+  #root.route-scale-75 {
     width: calc(100% / var(--app-scale));
     min-height: calc(100vh / var(--app-scale));
     transform: scale(var(--app-scale));
     transform-origin: top left;
+  }
+
+  #root.route-scale-100 {
+    width: 100%;
+    min-height: 100%;
+    transform: none;
   }
 }
 
