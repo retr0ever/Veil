@@ -46,7 +46,8 @@ export function ComplianceView() {
                 </div>
                 <button
                     onClick={downloadReport}
-                    className="rounded-lg bg-agent px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+                    className="rounded-lg bg-agent px-4 py-2 text-[13px] font-medium text-[#1a1322] transition-opacity hover:opacity-90"
+                    style={{ color: '#1a1322' }}
                 >
                     Download JSON Report
                 </button>

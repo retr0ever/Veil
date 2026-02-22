@@ -230,6 +230,7 @@ export function OnboardingPage() {
                       ? 'bg-agent text-[#1a1322] hover:brightness-110'
                       : 'cursor-not-allowed bg-border/60 text-muted/50'
                   }`}
+                  style={canSubmit ? { color: '#1a1322' } : undefined}
                 >
                   {submitting ? (
                     <>
@@ -320,6 +321,7 @@ export function OnboardingPage() {
               <a
                 href={`/app/projects/${created.site_id}`}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-agent px-5 py-3.5 text-[16px] font-medium text-[#1a1322] transition-all duration-150 hover:brightness-110"
+                style={{ color: '#1a1322' }}
               >
                 <svg
                   width="18"
