@@ -5,16 +5,17 @@
 <h3 align="center">AI-Powered Web Application Firewall</h3>
 
 <p align="center">
-  A self-improving reverse-proxy WAF that discovers new attack techniques, red-teams itself, and auto-patches its own defences.
-  <br />
-  Protect any web app with a single DNS change.
-</p>
-
+  Protect your vibecoded apps with our self-improving reverse-proxy WAF that discovers new attack techniques, red-teams itself, and auto-patches highlighted vulnerabilities.
+  <p align="center">
+    <a href="https://veil.keanuc.net" target="_blank"><b>Live demo: veil.keanuc.net</b></a>
+  </p>
+  
 ---
 
-## How It Works
+## How it works
 
-Point your domain's DNS (CNAME) to Veil. All traffic flows through the Veil proxy, where every request is classified in real time:
+1. Point your domain's DNS (CNAME) to Veil.
+2. All traffic flows through the Veil proxy, where every request is classified in real time:
 
 ```
 Incoming request
@@ -37,7 +38,7 @@ Background agents (continuous loop):
 - **AI:** Crusoe Inference API (fast filter) + Claude via AWS Bedrock (deep classifier + agents)
 - **Infra:** Caddy (on-demand TLS) + Docker Compose
 
-## Setup
+## Setup (local development)
 
 ### Backend
 
@@ -91,4 +92,7 @@ Dashboard at `http://localhost:5173`
 
 ## Team
 
-Hack Europe 2026 — Dublin
+Keanu Czirjak @keanucz - worked on the Golang backend, the agentic pipeline and inference engine
+Justyna Przyborska @justyna-przy - worked on designing the frontend and making it beautiful
+Selin Abdullazade @retr0ever - worked on the initial Python backend and core concept & idea
+Cian McNamara @Bocksa - worked on implementing analytics and compliance dashboard views
