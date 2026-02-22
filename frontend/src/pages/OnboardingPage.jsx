@@ -227,13 +227,13 @@ export function OnboardingPage() {
                   disabled={!canSubmit}
                   className={`flex w-full items-center justify-center gap-2.5 rounded-xl px-5 py-4 text-[16px] font-medium transition-all duration-150 ${
                     canSubmit
-                      ? 'bg-agent text-white hover:brightness-110'
+                      ? 'bg-agent text-[#1a1322] hover:brightness-110'
                       : 'cursor-not-allowed bg-border/60 text-muted/50'
                   }`}
                 >
                   {submitting ? (
                     <>
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#1a1322]/35 border-t-[#1a1322]" />
                       Creating project...
                     </>
                   ) : (
@@ -319,7 +319,7 @@ export function OnboardingPage() {
             <div className="mt-6 flex gap-3">
               <a
                 href={`/app/projects/${created.site_id}`}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-agent px-5 py-3.5 text-[16px] font-medium text-white transition-all duration-150 hover:brightness-110"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-agent px-5 py-3.5 text-[16px] font-medium text-[#1a1322] transition-all duration-150 hover:brightness-110"
               >
                 <svg
                   width="18"

@@ -71,7 +71,7 @@ export function DemoPage() {
           <button
             onClick={runAllTests}
             disabled={running}
-            className="mt-5 rounded-lg bg-agent px-6 py-3 text-[18px] font-medium text-white transition-all disabled:opacity-50 hover:brightness-110"
+            className="mt-5 rounded-lg bg-agent px-6 py-3 text-[18px] font-medium text-[#1a1322] transition-all disabled:opacity-50 hover:brightness-110"
           >
             {running ? 'Running tests...' : 'Run Simulated Tests'}
           </button>
@@ -119,7 +119,7 @@ export function DemoPage() {
           <div className="mt-8 border-t border-border pt-5">
             <a
               href="/auth"
-              className="inline-flex rounded-lg bg-agent px-5 py-2.5 text-[18px] font-medium text-white transition-all hover:brightness-110"
+              className="inline-flex rounded-lg bg-agent px-5 py-2.5 text-[18px] font-medium text-[#1a1322] transition-all hover:brightness-110"
             >
               Protect your own site
             </a>
