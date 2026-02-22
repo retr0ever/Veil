@@ -416,6 +416,16 @@ func (l *Loop) runPatch(ctx context.Context) {
 		}
 	}
 	if len(bypassing) == 0 {
+		// Even with no bypasses, generate traffic-based findings from all blocked threats
+		var blocked []db.Threat
+		for _, t := range threats {
+			if t.Blocked {
+				blocked = append(blocked, t)
+			}
+		}
+		if len(blocked) > 0 {
+			l.runCodeScan(ctx, blocked)
+		}
 		return
 	}
 

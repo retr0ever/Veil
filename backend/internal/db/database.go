@@ -444,10 +444,14 @@ func (db *DB) GetCurrentRules(ctx context.Context, siteID int) (*Rules, error) {
 
 // InsertRules inserts a new rule version for a site.
 func (db *DB) InsertRules(ctx context.Context, r *Rules) error {
+	var siteID any = r.SiteID
+	if r.SiteID == 0 {
+		siteID = nil // NULL for global rules (no FK violation)
+	}
 	_, err := db.Pool.Exec(ctx,
 		`INSERT INTO rules (site_id, version, crusoe_prompt, claude_prompt, updated_by)
 		 VALUES ($1, $2, $3, $4, $5)`,
-		r.SiteID, r.Version, r.CrusoePrompt, r.ClaudePrompt, r.UpdatedBy)
+		siteID, r.Version, r.CrusoePrompt, r.ClaudePrompt, r.UpdatedBy)
 	return err
 }
 
