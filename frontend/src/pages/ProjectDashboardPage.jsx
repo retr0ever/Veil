@@ -40,7 +40,7 @@ function NotFoundState() {
         <div className="mt-5 flex items-center gap-3">
           <a
             href="/app/projects"
-            className="inline-flex items-center gap-2 rounded-lg bg-text px-4 py-2 text-[13px] font-semibold text-bg transition-opacity hover:opacity-90"
+            className="inline-flex items-center gap-2 rounded-lg bg-agent px-4 py-2 text-[13px] font-semibold text-[#1a1322] transition-all hover:brightness-110"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M10 3L5 8l5 5" />
