@@ -254,6 +254,37 @@ func RegexClassify(raw string) *Result {
 		}
 	}
 
+	// CrowdSec community data checks (only if no attack patterns matched yet)
+	hasAttackMatch := false
+	for _, m := range matches {
+		if !m.isScanner {
+			hasAttackMatch = true
+			break
+		}
+	}
+	if !hasAttackMatch {
+		// CrowdSec bad user-agent database (600+ known scanners/bots)
+		if CrowdSecMatchBadUA(raw) {
+			matches = append(matches, match{"bad_user_agent", 0.87, 1, "Known malicious bot (CrowdSec)", true})
+		}
+		// CrowdSec SQLi probe patterns
+		if CrowdSecMatchSQLi(searchText) {
+			matches = append(matches, match{"sqli", 0.90, 1, "SQL injection probe (CrowdSec)", false})
+		}
+		// CrowdSec XSS probe patterns
+		if CrowdSecMatchXSS(searchText) {
+			matches = append(matches, match{"xss", 0.88, 1, "XSS probe (CrowdSec)", false})
+		}
+		// CrowdSec path traversal patterns
+		if CrowdSecMatchPathTraversal(searchText) {
+			matches = append(matches, match{"path_traversal", 0.88, 1, "Path traversal probe (CrowdSec)", false})
+		}
+		// CrowdSec known backdoor/webshell filenames (208 known paths)
+		if CrowdSecMatchBackdoor(raw) {
+			matches = append(matches, match{"backdoor", 0.93, 1, "Known webshell/backdoor path (CrowdSec)", false})
+		}
+	}
+
 	elapsed := float64(time.Since(start).Microseconds()) / 1000.0
 
 	if len(matches) == 0 {
