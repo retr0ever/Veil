@@ -105,7 +105,7 @@ func (db *DB) GetSession(ctx context.Context, sessionID string) (*Session, error
 	var ipAddr *string
 	var userAgent *string
 	err := db.Pool.QueryRow(ctx,
-		`SELECT id, user_id, created_at, expires_at, ip_address, user_agent
+		`SELECT id, user_id, created_at, expires_at, ip_address::text, user_agent
 		 FROM sessions WHERE id = $1`,
 		sessionID).Scan(&s.ID, &s.UserID, &s.CreatedAt, &s.ExpiresAt, &ipAddr, &userAgent)
 	if err != nil {

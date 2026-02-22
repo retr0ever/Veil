@@ -223,7 +223,10 @@ func (h *OAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 // Me returns the current user as JSON.
 func (h *OAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
-	user, _ := h.sessions.Validate(r.Context(), r)
+	user, err := h.sessions.Validate(r.Context(), r)
+	if err != nil {
+		h.logger.Error("session validate failed", "err", err)
+	}
 	if user == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
