@@ -405,11 +405,13 @@ async def auth_github_callback(code: str, request: Request):
 
     # Set session cookie and redirect to frontend
     response = RedirectResponse("/", status_code=302)
+    is_secure = request.url.scheme == "https" or "railway" in request.headers.get("host", "")
     response.set_cookie(
         SESSION_COOKIE,
         create_session_cookie(user_id),
         max_age=SESSION_MAX_AGE,
         httponly=True,
+        secure=is_secure,
         samesite="lax",
         path="/",
     )
