@@ -166,6 +166,7 @@ func main() {
 		api.Post("/agents/peek/run", compatHandler.TriggerPeek)
 		api.Post("/agents/poke/run", compatHandler.TriggerPoke)
 		api.Post("/agents/cycle", compatHandler.TriggerCycle)
+		api.Get("/agents/memories", compatHandler.GetAgentMemories)
 
 		// Sites
 		api.Post("/sites", siteHandler.CreateSite)

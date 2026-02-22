@@ -12,6 +12,7 @@ import (
 	"github.com/veil-waf/veil-go/internal/agents"
 	"github.com/veil-waf/veil-go/internal/classify"
 	"github.com/veil-waf/veil-go/internal/db"
+	"github.com/veil-waf/veil-go/internal/memory"
 	"github.com/veil-waf/veil-go/internal/proxy"
 	"github.com/veil-waf/veil-go/internal/ratelimit"
 )
@@ -304,6 +305,22 @@ func (ch *CompatHandler) TriggerCycle(w http.ResponseWriter, r *http.Request) {
 		"strategies_used": result.StrategiesUsed,
 		"stats":           stats,
 	})
+}
+
+// GetAgentMemories handles GET /api/agents/memories?agent=peek|poke|patch|system
+func (ch *CompatHandler) GetAgentMemories(w http.ResponseWriter, r *http.Request) {
+	agent := r.URL.Query().Get("agent")
+	if agent == "" {
+		agent = "system"
+	}
+
+	memories := ch.agents.GetMemories(r.Context(), agent)
+	if memories == nil {
+		memories = []memory.Memory{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(memories)
 }
 
 // ProxyInfoPage handles GET /p/{siteID} — HTML info page.
