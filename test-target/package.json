@@ -1,0 +1,12 @@
+{
+  "name": "waf-test-target",
+  "version": "1.0.0",
+  "description": "Intentionally vulnerable test target for WAF testing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}
