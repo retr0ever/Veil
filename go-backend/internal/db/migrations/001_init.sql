@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS sites (
     user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     domain          TEXT NOT NULL UNIQUE,
     project_name    TEXT,
-    upstream_ip     inet NOT NULL,
+    upstream_ip     TEXT NOT NULL DEFAULT '0.0.0.0',
     original_cname  TEXT,
     status          TEXT NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending','verifying','active',
