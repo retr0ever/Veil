@@ -216,6 +216,7 @@ export function AppShell({
   projectTitle,
   projectUrl,
   pageTitle,
+  disabledKeys = [],
   children,
 }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -358,8 +359,10 @@ export function AppShell({
 
         {links.filter((l) => l.key !== 'docs').map((link) => {
           const active = link.key === activeKey
+          const disabled = disabledKeys.includes(link.key)
 
           const handleClick = () => {
+            if (disabled) return
             if (isMobile) setMobileOpen(false)
             if (onNavClick) {
               onNavClick(link.key)
@@ -375,6 +378,7 @@ export function AppShell({
               key={link.key}
               type="button"
               onClick={handleClick}
+              disabled={disabled}
               className={`
                 group/nav relative flex w-full items-center
                 text-[19px] transition-colors duration-150
@@ -382,12 +386,14 @@ export function AppShell({
                   ? 'mx-auto h-9 w-9 justify-center rounded-md'
                   : 'mx-3 gap-3.5 rounded-lg px-3.5 py-2.5'
                 }
-                ${active
-                  ? 'bg-white/[0.07] text-text font-medium'
-                  : 'bg-transparent text-muted hover:bg-white/[0.04] hover:text-dim'
+                ${disabled
+                  ? 'cursor-not-allowed opacity-35'
+                  : active
+                    ? 'bg-white/[0.07] text-text font-medium'
+                    : 'bg-transparent text-muted hover:bg-white/[0.04] hover:text-dim'
                 }
               `}
-              title={collapsed && !isMobile ? link.label : undefined}
+              title={disabled ? `Complete DNS setup first` : collapsed && !isMobile ? link.label : undefined}
             >
               {/* Active left accent bar */}
               {active && (!collapsed || isMobile) && (

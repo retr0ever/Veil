@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { Dashboard } from '../components/Dashboard'
 import { AppShell, LoadingSpinner } from '../components/AppShell'
@@ -135,21 +135,30 @@ export function ProjectDashboardPage({ siteId }) {
   }
 
   const projectName = getProjectName(siteId)
-  const currentLink = PROJECT_SIDEBAR_LINKS.find((l) => l.key === activeSection)
+  const dnsActive = site.status === 'active' || site.status === 'live'
+  const disabledKeys = useMemo(
+    () => (dnsActive ? [] : ['site', 'agents', 'threats']),
+    [dnsActive],
+  )
+
+  // Force to setup tab when DNS isn't active
+  const effectiveSection = !dnsActive && disabledKeys.includes(activeSection) ? 'setup' : activeSection
+  const currentLink = PROJECT_SIDEBAR_LINKS.find((l) => l.key === effectiveSection)
   const pageTitle = currentLink?.label || 'Overview'
 
   return (
     <AppShell
       links={PROJECT_SIDEBAR_LINKS}
-      activeKey={activeSection}
+      activeKey={effectiveSection}
       onNavClick={handleNavClick}
       user={user}
       logout={logout}
       projectTitle={projectName || site.domain || site.target_url}
       projectUrl={site.domain || site.target_url}
       pageTitle={pageTitle}
+      disabledKeys={disabledKeys}
     >
-      <Dashboard site={site} activeSection={activeSection} />
+      <Dashboard site={site} activeSection={effectiveSection} />
     </AppShell>
   )
 }
