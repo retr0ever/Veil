@@ -2,6 +2,7 @@ import { useAuth } from '../hooks/useAuth'
 
 export function AuthPage() {
   const { user, loading } = useAuth()
+  const sectionMinHeight = 'calc((100dvh - 120px) / var(--app-scale))'
 
   if (loading) {
     return (
@@ -19,16 +20,16 @@ export function AuthPage() {
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-140px)] overflow-hidden bg-[#1a1322]">
+    <div className="relative overflow-hidden bg-[#1a1322]" style={{ minHeight: sectionMinHeight }}>
       <div
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            'radial-gradient(circle at top right, rgba(112,130,207,0.34) 0%, rgba(112,130,207,0.2) 12%, rgba(112,130,207,0.08) 22%, transparent 36%), radial-gradient(circle at bottom left, rgba(176,98,177,0.34) 0%, rgba(176,98,177,0.2) 14%, rgba(176,98,177,0.08) 24%, transparent 38%), radial-gradient(circle at 52% 38%, rgba(142,108,190,0.1) 0%, rgba(142,108,190,0.04) 16%, transparent 30%)',
+            'radial-gradient(70% 62% at 86% 22%, rgba(176,98,177,0.28) 0%, rgba(176,98,177,0.16) 24%, rgba(176,98,177,0.08) 42%, transparent 76%), radial-gradient(68% 60% at 14% 82%, rgba(112,130,207,0.24) 0%, rgba(112,130,207,0.14) 24%, rgba(112,130,207,0.08) 42%, transparent 74%), radial-gradient(56% 42% at 50% 108%, rgba(132,104,182,0.16) 0%, rgba(132,104,182,0.08) 34%, transparent 72%), radial-gradient(48% 44% at 50% 50%, rgba(146,109,191,0.06) 0%, transparent 72%)',
         }}
       />
 
-      <div className="relative z-10 flex min-h-[calc(100vh-140px)] items-center justify-center px-6">
+      <div className="relative z-10 flex items-center justify-center px-6 py-12" style={{ minHeight: sectionMinHeight }}>
       <div className="w-full max-w-[600px]">
         {/* Card */}
         <div className="rounded-2xl border border-border/60 bg-[#1a1322] px-8 py-10 md:px-10 md:py-12">

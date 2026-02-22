@@ -98,16 +98,7 @@ export function LandingPage() {
                   Drop-in reverse proxy that blocks malicious requests before they reach your backend.
                   When something bypasses, Veil red-teams itself and auto-patches its detection rules, then verifies the fix by replay.
                 </p>
-                <div className="mt-5 flex items-center gap-0" aria-hidden="true">
-                  {[0, 1, 2].map((index) => (
-                    <img
-                      key={index}
-                      src="/svg/gang.png"
-                      alt=""
-                      className="h-auto w-[132px] object-contain md:w-[156px]"
-                    />
-                  ))}
-                </div>
+                
               </div>
 
               <div className="w-full md:w-[470px] md:shrink-0">
@@ -207,7 +198,7 @@ export function LandingPage() {
         >
           <div className="h-px w-full bg-[#848188]/70" />
           <div className="px-6 md:px-12">
-          <div className="mx-auto hidden w-[clamp(520px,50vw,960px)] sm:block">
+          <div className="mx-auto hidden w-[clamp(520px,50vw,960px)] pb-32 md:pb-36 sm:block">
             <div className="relative aspect-square w-full">
               <div className="pointer-events-none absolute inset-0 z-20">
                 <svg viewBox="0 0 1000 1000" className="h-full w-full" aria-hidden="true">
@@ -257,7 +248,7 @@ export function LandingPage() {
                 </div>
               </div>
 
-              <div className="absolute inset-x-[6%] top-[82%] z-0">
+              <div className="absolute inset-x-[4%] top-[85%] z-0">
                 <div
                   className="rounded-[6px] border bg-[#21192b] px-6 py-6 transition-colors duration-200 md:px-7 md:py-7"
                   style={{ borderColor: activeAgentBorderColor }}
