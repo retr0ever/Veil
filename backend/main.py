@@ -328,7 +328,7 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 
-app = FastAPI(title="Veil", lifespan=lifespan)
+app = FastAPI(title="Veil", lifespan=lifespan, docs_url="/api/docs", redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,
