@@ -423,7 +423,7 @@ func (h *Handler) logAndBroadcast(site *db.Site, rawForLog, rawRequest, sourceIP
 	}
 
 	// Auto-populate threat_ips for blocked malicious requests
-	if blocked && sourceIP != "" {
+	if blocked && sourceIP != "" && net.ParseIP(sourceIP) != nil {
 		tier := "scrutinize" // default: flag for deeper analysis
 		_ = h.db.InsertSingleThreatIP(ctx, sourceIP, tier, "waf-live")
 	}

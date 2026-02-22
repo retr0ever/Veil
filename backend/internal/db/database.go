@@ -724,6 +724,7 @@ func (db *DB) SeedThreatIPsFromBlockedRequests(ctx context.Context) (int64, erro
 		     FROM request_log
 		     WHERE blocked = true AND classification = 'MALICIOUS'
 		       AND source_ip IS NOT NULL AND source_ip != ''
+		       AND source_ip ~ '^[0-9a-fA-F:.]+$'
 		     GROUP BY source_ip
 		 ) sub
 		 ON CONFLICT DO NOTHING`)
