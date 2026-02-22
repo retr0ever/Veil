@@ -75,6 +75,8 @@ export function LandingPage() {
 
   const activeAgentDetails = AGENT_DETAILS[activeAgent]
   const activeAgentBorderColor = AGENT_BORDER_COLORS[activeAgent]
+  const authHref = !loading && user ? '/auth/logout' : '/auth'
+  const authLabel = !loading && user ? 'SIGN OUT' : 'SIGN IN'
 
   return (
     <div className="min-h-screen w-full bg-[#1a1322] text-[#f4eff7]">
@@ -335,7 +337,7 @@ export function LandingPage() {
               <a href="/terms" className="transition-opacity hover:opacity-80">TERMS &amp; CONDITIONS</a>
               <a href="/privacy" className="transition-opacity hover:opacity-80">PRIVACY POLICY</a>
               <a href="/security" className="transition-opacity hover:opacity-80">SECURITY</a>
-              <a href="/auth" className="transition-opacity hover:opacity-80">SIGN IN</a>
+              <a href={authHref} className="transition-opacity hover:opacity-80">{authLabel}</a>
             </nav>
 
             <a

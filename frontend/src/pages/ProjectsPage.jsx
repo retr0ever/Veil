@@ -97,7 +97,7 @@ function ProjectsEmptyState() {
 
         <a
           href="/app/onboarding"
-          className="mt-8 inline-flex items-center gap-3 rounded-xl bg-agent px-9 py-4.5 text-[20px] font-semibold text-white transition-all hover:brightness-110"
+          className="mt-8 inline-flex items-center gap-3 rounded-xl bg-agent px-9 py-4.5 text-[20px] font-semibold text-[#1a1322] transition-all hover:brightness-110"
         >
           <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M8 3v10M3 8h10" />
@@ -167,7 +167,7 @@ export function ProjectsPage() {
           {!loading && sites.length > 0 && (
             <a
               href="/app/onboarding"
-              className="flex items-center gap-2.5 rounded-xl bg-agent px-7 py-3.5 text-[18px] font-semibold text-white transition-all hover:brightness-110"
+              className="flex items-center gap-2.5 rounded-xl bg-agent px-7 py-3.5 text-[18px] font-semibold text-[#1a1322] transition-all hover:brightness-110"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M8 3v10M3 8h10" />

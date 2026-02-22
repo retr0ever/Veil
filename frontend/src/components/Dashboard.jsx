@@ -6,7 +6,18 @@ import { RequestFeed } from './RequestFeed'
 import { AgentLog, AgentPipeline } from './AgentLog'
 import { ThreatTable } from './ThreatTable'
 import { BlockRateChart } from './BlockRateChart'
-import { humaniseRequest, humaniseAgentEvent, humaniseAttackType, attackExplanation, attackCategory, relativeTime } from '../lib/humanise'
+import { ComplianceView } from './ComplianceView'
+import { NavBar } from './NavBar'
+import { APP_NAV_LINKS } from '../lib/navLinks'
+import { humaniseRequest, humaniseAgentEvent, humaniseAttackType, relativeTime } from '../lib/humanise'
+
+const tabs = [
+  { key: 'site', label: 'Your Site' },
+  { key: 'agents', label: 'Agents' },
+  { key: 'threats', label: 'Threat Library' },
+  { key: 'compliance', label: 'Intelligence' },
+  { key: 'setup', label: 'Setup' },
+]
 
 const TEST_SCENARIOS = [
   {
@@ -218,9 +229,8 @@ function ActivityItem({ item, isLast }) {
 
       {/* Expanded details */}
       <div
-        className={`overflow-hidden transition-all duration-200 ease-out ${
-          expanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
-        }`}
+        className={`overflow-hidden transition-all duration-200 ease-out ${expanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
+          }`}
       >
         <div className="mx-6 mb-3 flex flex-wrap gap-x-5 gap-y-2 rounded-lg border border-border/40 bg-bg px-4 py-3 text-[13px]">
           {item.attackType && (
@@ -352,9 +362,8 @@ function TestResultsSummary({ results }) {
       {/* Summary line */}
       <div className="flex items-center gap-3">
         <div
-          className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-            allBlocked ? 'bg-safe/10 border border-safe/20' : 'bg-suspicious/10 border border-suspicious/20'
-          }`}
+          className={`flex h-10 w-10 items-center justify-center rounded-xl ${allBlocked ? 'bg-safe/10 border border-safe/20' : 'bg-suspicious/10 border border-suspicious/20'
+            }`}
         >
           {allBlocked ? (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-safe">
@@ -385,11 +394,10 @@ function TestResultsSummary({ results }) {
         {results.map((r) => (
           <div
             key={r.id}
-            className={`rounded-xl border p-5 transition-colors ${
-              r.blocked
+            className={`rounded-xl border p-5 transition-colors ${r.blocked
                 ? 'border-safe/20 bg-safe/[0.04]'
                 : 'border-blocked/20 bg-blocked/[0.04]'
-            }`}
+              }`}
           >
             <div className="flex items-center gap-2.5 mb-2">
               {r.blocked ? (
@@ -450,7 +458,7 @@ export function Dashboard({ site, activeSection = 'site' }) {
         const data = await res.json()
         setLastCycle(data)
       }
-    } catch {}
+    } catch { }
     setCycleRunning(false)
   }
 
@@ -598,6 +606,19 @@ export function Dashboard({ site, activeSection = 'site' }) {
                   ))}
                 </div>
               )}
+              {mergedFeed.map((item, i) => (
+                <div key={i} className="px-4 py-2.5 border-b border-border/40 flex items-center gap-3">
+                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.kind === 'agent' ? 'bg-agent' : item.blocked ? 'bg-blocked' : 'bg-suspicious'
+                    }`} />
+                  <span className={`flex-1 text-[13px] ${item.color}`}>{item.summary}</span>
+                  <span className="text-[11px] text-muted shrink-0">{relativeTime(item.timestamp)}</span>
+                  {item.blocked && (
+                    <span className="text-blocked text-[10px] font-semibold shrink-0 bg-blocked/10 px-2 py-0.5 rounded">
+                      BLOCKED
+                    </span>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -822,7 +843,7 @@ export function Dashboard({ site, activeSection = 'site' }) {
                       try {
                         const res = await fetch(`/api/sites/${site.site_id}`, { method: 'DELETE' })
                         if (res.ok) window.location.href = '/app/projects'
-                      } catch {}
+                      } catch { }
                     }}
                     className="shrink-0 rounded-lg border border-blocked/30 px-3.5 py-1.5 text-[13px] font-medium text-blocked transition-all hover:bg-blocked/10"
                   >
@@ -832,6 +853,10 @@ export function Dashboard({ site, activeSection = 'site' }) {
               </div>
             </div>
           </div>
+        )}
+        {/* ── Tab: Compliance & Analytics ── */}
+        {activeTab === 'compliance' && (
+          <ComplianceView />
         )}
       </div>
     </div>
