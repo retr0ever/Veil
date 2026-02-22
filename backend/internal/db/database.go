@@ -713,7 +713,7 @@ func (db *DB) CountThreatIPs(ctx context.Context) (int64, error) {
 func (db *DB) SeedThreatIPsFromBlockedRequests(ctx context.Context) (int64, error) {
 	tag, err := db.Pool.Exec(ctx,
 		`INSERT INTO threat_ips (ip, tier, source)
-		 SELECT DISTINCT source_ip::inet,
+		 SELECT DISTINCT source_ip,
 		        CASE WHEN block_count >= 5 THEN 'ban'
 		             WHEN block_count >= 3 THEN 'block'
 		             ELSE 'scrutinize'
@@ -723,8 +723,7 @@ func (db *DB) SeedThreatIPsFromBlockedRequests(ctx context.Context) (int64, erro
 		     SELECT source_ip, COUNT(*) AS block_count
 		     FROM request_log
 		     WHERE blocked = true AND classification = 'MALICIOUS'
-		       AND source_ip IS NOT NULL AND source_ip != ''
-		       AND source_ip ~ '^[0-9a-fA-F:.]+$'
+		       AND source_ip IS NOT NULL
 		     GROUP BY source_ip
 		 ) sub
 		 ON CONFLICT DO NOTHING`)
