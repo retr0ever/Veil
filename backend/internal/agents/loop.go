@@ -109,15 +109,15 @@ func (l *Loop) runCycle(ctx context.Context) *CycleResult {
 	result.Bypasses = bypasses
 	l.broadcast("poke", "done", fmt.Sprintf("Found %d bypasses", bypasses))
 
-	// 3. Patch
+	// 3. Patch (always run — generates findings even without bypasses)
 	if bypasses > 0 {
 		l.broadcast("patch", "running", fmt.Sprintf("Patching %d bypasses...", bypasses))
-		l.runPatch(ctx)
-		result.PatchRounds = 1
-		l.broadcast("patch", "done", "Patching complete")
 	} else {
-		l.broadcast("patch", "idle", "No bypasses to fix")
+		l.broadcast("patch", "running", "Generating vulnerability findings...")
 	}
+	l.runPatch(ctx)
+	result.PatchRounds = 1
+	l.broadcast("patch", "done", "Patching complete")
 
 	// 4. Learn: analyse traffic patterns, auto-ban repeat offenders, update CrowdSec insights
 	l.broadcast("learn", "running", "Analysing traffic patterns and learning...")
