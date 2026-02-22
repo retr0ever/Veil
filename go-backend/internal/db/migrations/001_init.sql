@@ -233,6 +233,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_request_log_notify ON request_log;
 CREATE TRIGGER trg_request_log_notify
     AFTER INSERT ON request_log FOR EACH ROW EXECUTE FUNCTION notify_request_log();
 
@@ -247,5 +248,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_agent_log_notify ON agent_log;
 CREATE TRIGGER trg_agent_log_notify
     AFTER INSERT ON agent_log FOR EACH ROW EXECUTE FUNCTION notify_agent_log();
