@@ -91,6 +91,17 @@ export function OnboardingPage() {
     return () => clearInterval(interval)
   }, [created, siteStatus?.status])
 
+  // Load repos when DNS is verified (must be before early returns to keep hook count stable)
+  useEffect(() => {
+    if (!created || siteStatus?.status !== 'active' || repos !== null) return
+    setLoadingRepos(true)
+    fetch(`/api/sites/${created.site_id}/repos`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setRepos(data || []))
+      .catch(() => setRepos([]))
+      .finally(() => setLoadingRepos(false))
+  }, [created, siteStatus?.status, repos])
+
   if (authLoading) {
     return (
       <AppShell links={APP_SIDEBAR_LINKS} activeKey="new" user={user} logout={logout} pageTitle="New Project">
@@ -162,17 +173,6 @@ export function OnboardingPage() {
     }
     setVerifying(false)
   }
-
-  // Load repos when DNS is verified
-  useEffect(() => {
-    if (!created || siteStatus?.status !== 'active' || repos !== null) return
-    setLoadingRepos(true)
-    fetch(`/api/sites/${created.site_id}/repos`)
-      .then(res => res.ok ? res.json() : [])
-      .then(data => setRepos(data || []))
-      .catch(() => setRepos([]))
-      .finally(() => setLoadingRepos(false))
-  }, [created, siteStatus?.status, repos])
 
   const linkRepo = async (repo) => {
     if (!created || linkingRepo) return
