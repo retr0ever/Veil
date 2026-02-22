@@ -235,8 +235,14 @@ func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.
 		return
 	}
 
-	// Phase 2: Regex says safe/suspicious — proxy immediately, run full LLM pipeline in background
-	go h.backgroundClassify(site, rawForLog, rawRequest, sourceIP)
+	// Phase 2: Proxy immediately. For safe requests, log directly. For suspicious, run LLM in background.
+	if regexResult.Classification == "SAFE" {
+		// Regex says safe — log it and move on, no LLM needed
+		go h.logAndBroadcast(site, rawForLog, rawRequest, sourceIP, regexResult, false)
+	} else {
+		// Suspicious or low-confidence malicious — run full LLM pipeline in background
+		go h.backgroundClassify(site, rawForLog, rawRequest, sourceIP)
+	}
 
 	// Forward to upstream — strip any CIDR suffix (e.g. /32 from inet conversion)
 	upstreamIP := site.UpstreamIP

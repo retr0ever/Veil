@@ -176,3 +176,43 @@ func (dh *DashboardHandler) GetComplianceReport(w http.ResponseWriter, r *http.R
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(report)
 }
+
+// GetActiveDecisions handles GET /api/sites/{id}/decisions
+func (dh *DashboardHandler) GetActiveDecisions(w http.ResponseWriter, r *http.Request) {
+	siteID, ok := dh.getSiteID(w, r)
+	if !ok {
+		return
+	}
+	decisions, err := dh.db.ListActiveDecisions(r.Context(), siteID)
+	if err != nil {
+		jsonError(w, "failed to fetch decisions", http.StatusInternalServerError)
+		return
+	}
+	if decisions == nil {
+		decisions = []db.Decision{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(decisions)
+}
+
+// GetThreatIPs handles GET /api/sites/{id}/threat-ips
+func (dh *DashboardHandler) GetThreatIPs(w http.ResponseWriter, r *http.Request) {
+	_, ok := dh.getSiteID(w, r)
+	if !ok {
+		return
+	}
+	ips, err := dh.db.ListThreatIPs(r.Context(), 100)
+	if err != nil {
+		jsonError(w, "failed to fetch threat IPs", http.StatusInternalServerError)
+		return
+	}
+	if ips == nil {
+		ips = []db.ThreatIPEntry{}
+	}
+	count, _ := dh.db.CountThreatIPs(r.Context())
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"entries":    ips,
+		"total_count": count,
+	})
+}

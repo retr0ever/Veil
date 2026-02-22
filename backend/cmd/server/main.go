@@ -184,6 +184,8 @@ func main() {
 		api.Get("/sites/{id}/requests", dashHandler.GetRequests)
 		api.Get("/sites/{id}/rules", dashHandler.GetRules)
 		api.Get("/sites/{id}/pipeline", dashHandler.GetPipeline)
+		api.Get("/sites/{id}/decisions", dashHandler.GetActiveDecisions)
+		api.Get("/sites/{id}/threat-ips", dashHandler.GetThreatIPs)
 
 		// Analytics
 		api.Get("/analytics/threat-distribution", dashHandler.GetThreatDistribution)

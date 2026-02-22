@@ -18,7 +18,54 @@ type attackRule struct {
 
 var rules []attackRule
 
+// scannerRules detect reconnaissance and scanning tools — requests that are
+// individually harmless but indicate automated probing.  Modeled after
+// CrowdSec's http-probing and http-bad-user-agent scenarios.
+var scannerRules []attackRule
+
+// safePathRE matches request lines that are obviously benign static-asset
+// fetches.  If the first line of the raw request matches, we short-circuit
+// with SAFE/0.95 before running attack patterns.
+var safePathRE *regexp.Regexp
+
 func init() {
+	// Static-asset fast path — skip classification entirely.
+	safePathRE = regexp.MustCompile(
+		`(?i)^(GET|HEAD)\s+\S+\.(css|js|png|jpe?g|gif|svg|ico|woff2?|ttf|eot|map|webp|avif|webm|mp4)\b`,
+	)
+
+	// Scanner / recon detection (CrowdSec-inspired scenarios)
+	scannerRules = []attackRule{
+		{
+			Category:  "scanner",
+			HumanName: "Web scanner / reconnaissance",
+			BaseConf:  0.88,
+			Patterns: compile(
+				// Known scanner / admin paths (CrowdSec http-probing collection)
+				`(?i)(GET|HEAD|POST)\s+/(\.env|\.git/(config|HEAD)|wp-login\.php|wp-admin|xmlrpc\.php|phpinfo\.php|phpmyadmin|adminer|\.well-known/security\.txt|server-status|server-info|cgi-bin/)`,
+				// Config / backup file probing
+				`(?i)(GET|HEAD)\s+/\S*\.(bak|old|orig|save|swp|sql|tar\.gz|zip|7z|rar|conf|config|ini|log|yml|yaml|toml|sqlite|db)\b`,
+				// Framework debug / info endpoints
+				`(?i)(GET|HEAD)\s+/(debug|trace|actuator|_profiler|_debugbar|telescope|elmah|errorlog|api-docs|swagger)`,
+				// Common exploit paths
+				`(?i)(GET|POST)\s+/(shell|cmd|console|eval|setup\.php|install\.php|config\.php|admin\.php|login\.action|struts)`,
+			),
+		},
+		{
+			Category:  "bad_user_agent",
+			HumanName: "Malicious bot / scanner tool",
+			BaseConf:  0.85,
+			Patterns: compile(
+				// Known vulnerability scanners (CrowdSec http-bad-user-agent)
+				`(?i)User-Agent:\s*(sqlmap|nikto|nmap|masscan|zgrab|nuclei|gobuster|dirbuster|wfuzz|ffuf|feroxbuster|httpx|whatweb|wpscan|joomscan|acunetix|nessus|openvas|qualys|burp|zaproxy|arachni)`,
+				// Generic bot patterns with no legitimate purpose
+				`(?i)User-Agent:\s*(python-requests|python-urllib|Java/|libwww-perl|Go-http-client|curl/|wget/|Scrapy|axios/|node-fetch|HTTPie).*\n.*(?:(?:GET|POST)\s+/(\.env|\.git|wp-login|admin|phpinfo|shell))`,
+				// Empty or missing user agent on non-API paths
+				`(?i)^(GET|POST)\s+/[^a]*\bHTTP/\d\.\d\s*\n(?!.*User-Agent:)`,
+			),
+		},
+	}
+
 	rules = []attackRule{
 		{
 			Category:  "sqli",
@@ -138,8 +185,26 @@ func compile(patterns ...string) []*regexp.Regexp {
 }
 
 // RegexClassify runs regex-based classification on a raw request string.
+// Order: static-asset fast-path → attack patterns → scanner patterns → SAFE.
 func RegexClassify(raw string) *Result {
 	start := time.Now()
+
+	// Fast-path: static assets are always safe — no further checks.
+	firstLine := raw
+	if idx := strings.IndexByte(raw, '\n'); idx > 0 {
+		firstLine = raw[:idx]
+	}
+	if safePathRE.MatchString(firstLine) {
+		elapsed := float64(time.Since(start).Microseconds()) / 1000.0
+		return &Result{
+			Classification: "SAFE",
+			Confidence:     0.95,
+			AttackType:     "none",
+			Reason:         "Static asset request",
+			Classifier:     "regex",
+			ResponseTimeMs: elapsed,
+		}
+	}
 
 	// Double-decode for evasion detection
 	decoded, _ := url.QueryUnescape(raw)
@@ -151,9 +216,11 @@ func RegexClassify(raw string) *Result {
 		conf      float64
 		hitCount  int
 		humanName string
+		isScanner bool // scanner hits are SUSPICIOUS, not MALICIOUS
 	}
 	var matches []match
 
+	// Check attack patterns (result in MALICIOUS classification)
 	for _, rule := range rules {
 		hits := 0
 		for _, pat := range rule.Patterns {
@@ -166,7 +233,24 @@ func RegexClassify(raw string) *Result {
 			if conf > 0.99 {
 				conf = 0.99
 			}
-			matches = append(matches, match{rule.Category, conf, hits, rule.HumanName})
+			matches = append(matches, match{rule.Category, conf, hits, rule.HumanName, false})
+		}
+	}
+
+	// Check scanner / recon patterns (result in SUSPICIOUS classification)
+	for _, rule := range scannerRules {
+		hits := 0
+		for _, pat := range rule.Patterns {
+			if pat.MatchString(searchText) {
+				hits++
+			}
+		}
+		if hits > 0 {
+			conf := rule.BaseConf + float64(hits-1)*0.03
+			if conf > 0.99 {
+				conf = 0.99
+			}
+			matches = append(matches, match{rule.Category, conf, hits, rule.HumanName, true})
 		}
 	}
 
@@ -183,24 +267,58 @@ func RegexClassify(raw string) *Result {
 		}
 	}
 
-	// Pick highest confidence
-	best := matches[0]
-	for _, m := range matches[1:] {
-		if m.conf > best.conf || (m.conf == best.conf && m.hitCount > best.hitCount) {
-			best = m
+	// Prefer attack patterns over scanner patterns
+	var bestAttack, bestScanner *match
+	for i := range matches {
+		m := &matches[i]
+		if m.isScanner {
+			if bestScanner == nil || m.conf > bestScanner.conf {
+				bestScanner = m
+			}
+		} else {
+			if bestAttack == nil || m.conf > bestAttack.conf || (m.conf == bestAttack.conf && m.hitCount > bestAttack.hitCount) {
+				bestAttack = m
+			}
 		}
 	}
 
-	plural := ""
-	if best.hitCount > 1 {
-		plural = "s"
+	// Attack patterns take priority → MALICIOUS
+	if bestAttack != nil {
+		plural := ""
+		if bestAttack.hitCount > 1 {
+			plural = "s"
+		}
+		return &Result{
+			Classification: "MALICIOUS",
+			Confidence:     bestAttack.conf,
+			AttackType:     bestAttack.category,
+			Reason:         fmt.Sprintf("Detected %s (%d pattern%s matched)", bestAttack.humanName, bestAttack.hitCount, plural),
+			Classifier:     "regex",
+			ResponseTimeMs: elapsed,
+		}
+	}
+
+	// Scanner patterns → SUSPICIOUS (not malicious, but worth investigating)
+	if bestScanner != nil {
+		plural := ""
+		if bestScanner.hitCount > 1 {
+			plural = "s"
+		}
+		return &Result{
+			Classification: "SUSPICIOUS",
+			Confidence:     bestScanner.conf,
+			AttackType:     bestScanner.category,
+			Reason:         fmt.Sprintf("Detected %s (%d indicator%s matched)", bestScanner.humanName, bestScanner.hitCount, plural),
+			Classifier:     "regex",
+			ResponseTimeMs: elapsed,
+		}
 	}
 
 	return &Result{
-		Classification: "MALICIOUS",
-		Confidence:     best.conf,
-		AttackType:     best.category,
-		Reason:         fmt.Sprintf("Detected %s (%d pattern%s matched)", best.humanName, best.hitCount, plural),
+		Classification: "SAFE",
+		Confidence:     0.85,
+		AttackType:     "none",
+		Reason:         "No known attack patterns detected",
 		Classifier:     "regex",
 		ResponseTimeMs: elapsed,
 	}

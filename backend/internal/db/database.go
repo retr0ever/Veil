@@ -628,6 +628,74 @@ func (db *DB) ClearThreatIPsBySource(ctx context.Context, source string) error {
 	return err
 }
 
+// ListActiveDecisions returns all non-expired decisions, optionally filtered by site.
+func (db *DB) ListActiveDecisions(ctx context.Context, siteID int) ([]Decision, error) {
+	query := `SELECT id, ip, decision_type, scope, duration_seconds, reason, source, confidence, created_at, expires_at, site_id
+		FROM decisions
+		WHERE (expires_at IS NULL OR expires_at > NOW())`
+	args := []any{}
+	if siteID > 0 {
+		query += ` AND (site_id = $1 OR site_id = 0)`
+		args = append(args, siteID)
+	}
+	query += ` ORDER BY created_at DESC LIMIT 200`
+
+	rows, err := db.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Decision
+	for rows.Next() {
+		var d Decision
+		var reason, source *string
+		var expiresAt *time.Time
+		if err := rows.Scan(&d.ID, &d.IP, &d.DecisionType, &d.Scope, &d.DurationSeconds, &reason, &source, &d.Confidence, &d.CreatedAt, &expiresAt, &d.SiteID); err != nil {
+			return nil, err
+		}
+		if reason != nil {
+			d.Reason = *reason
+		}
+		if source != nil {
+			d.Source = *source
+		}
+		d.ExpiresAt = expiresAt
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// ListThreatIPs returns recent threat IP entries, optionally filtered by tier.
+func (db *DB) ListThreatIPs(ctx context.Context, limit int) ([]ThreatIPEntry, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := db.Pool.Query(ctx,
+		`SELECT id, ip, tier, source, fetched_at FROM threat_ips ORDER BY fetched_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []ThreatIPEntry
+	for rows.Next() {
+		var e ThreatIPEntry
+		if err := rows.Scan(&e.ID, &e.IP, &e.Tier, &e.Source, &e.FetchedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+
+// CountThreatIPs returns the total number of IPs in the threat_ips table.
+func (db *DB) CountThreatIPs(ctx context.Context) (int64, error) {
+	var count int64
+	err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM threat_ips`).Scan(&count)
+	return count, err
+}
+
 // ---------------------------------------------------------------------------
 // GitHub repos
 // ---------------------------------------------------------------------------
