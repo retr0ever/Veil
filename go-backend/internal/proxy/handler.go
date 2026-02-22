@@ -137,7 +137,11 @@ func (h *Handler) ProxyInfo(w http.ResponseWriter, r *http.Request, siteID int) 
 		return
 	}
 
-	upstream := "http://" + site.UpstreamIP
+	upIP := site.UpstreamIP
+	if idx := strings.Index(upIP, "/"); idx != -1 {
+		upIP = upIP[:idx]
+	}
+	upstream := "http://" + upIP
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Veil Protected Endpoint</title>
@@ -246,8 +250,12 @@ func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.
 		return
 	}
 
-	// Forward to upstream
-	upstream := "http://" + site.UpstreamIP
+	// Forward to upstream — strip any CIDR suffix (e.g. /32 from inet conversion)
+	upstreamIP := site.UpstreamIP
+	if idx := strings.Index(upstreamIP, "/"); idx != -1 {
+		upstreamIP = upstreamIP[:idx]
+	}
+	upstream := "http://" + upstreamIP
 	forwardURL := upstream + path
 	if r.URL.RawQuery != "" {
 		forwardURL += "?" + r.URL.RawQuery
