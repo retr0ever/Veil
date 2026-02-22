@@ -92,7 +92,10 @@ Dashboard at `http://localhost:5173`
 
 ## Team
 
-Keanu Czirjak @keanucz - worked on the Golang backend, the agentic pipeline and inference engine
-Justyna Przyborska @justyna-przy - worked on designing the frontend and making it beautiful
-Selin Abdullazade @retr0ever - worked on the initial Python backend and core concept & idea
-Cian McNamara @Bocksa - worked on implementing analytics and compliance dashboard views
+**Keanu Czirjak (@keanucz)** - worked on the Golang backend, the agentic pipeline and inference engine
+
+**Justyna Przyborska (@justyna-przy)** - worked on designing the frontend and making it beautiful
+
+**Selin Abdullazade (@retr0ever)** - worked on the initial Python backend and core concept & idea
+
+**Cian McNamara (@Bocksa)** - worked on implementing analytics and compliance dashboard views
