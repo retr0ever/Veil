@@ -1,25 +1,41 @@
-# Veil
+<p align="center">
+  <img src="veil.png" alt="Veil" width="400" />
+</p>
 
-A self-improving AI-powered firewall that continuously discovers new web attack techniques, red-teams itself, and auto-patches its own defences.
+<h3 align="center">AI-Powered Web Application Firewall</h3>
 
-## Architecture
+<p align="center">
+  A self-improving reverse-proxy WAF that discovers new attack techniques, red-teams itself, and auto-patches its own defences.
+  <br />
+  Protect any web app with a single DNS change.
+</p>
+
+---
+
+## How It Works
+
+Point your domain's DNS (CNAME) to Veil. All traffic flows through the Veil proxy, where every request is classified in real time:
 
 ```
-HTTP request → Veil WAF (Crusoe fast filter → Claude deep classifier)
-  → Safe: forward to application
-  → Malicious: block + log + update rules
+Incoming request
+  → Regex classifier (instant, blocks obvious attacks)
+  → Proxy to your origin (< 100ms overhead)
+  → Background LLM pipeline (Crusoe fast filter → Claude deep analysis)
+  → Threat intelligence + IP reputation check
+  → If malicious: block + log + update rules
 
-Background agents:
-  Peek (scout)    → discovers new web attack techniques (SQLi, XSS, RCE, etc.)
-  Poke (red team) → tests Veil's own defences with attack payloads
-  Patch (adapt)   → analyses bypasses and strengthens detection rules
+Background agents (continuous loop):
+  Peek (scout)  → discovers new web attack techniques
+  Poke (red)    → tests Veil's own defences with generated payloads
+  Patch (adapt) → analyses bypasses and strengthens detection rules
 ```
 
 ## Stack
 
-- **Backend:** Python / FastAPI / SQLite
-- **Frontend:** React / TailwindCSS
-- **AI:** Crusoe Inference API (fast filter) + Claude API (deep classifier + agents)
+- **Backend:** Go / Chi / PostgreSQL
+- **Frontend:** React / Vite / TailwindCSS
+- **AI:** Crusoe Inference API (fast filter) + Claude via AWS Bedrock (deep classifier + agents)
+- **Infra:** Caddy (on-demand TLS) + Docker Compose
 
 ## Setup
 
@@ -27,11 +43,8 @@ Background agents:
 
 ```bash
 cd backend
-cp .env.example .env  # add your API keys
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
+cp .env.example .env   # add your API keys
+go run ./cmd/server/main.go
 ```
 
 ### Frontend
@@ -42,7 +55,30 @@ npm install
 npm run dev
 ```
 
+### Docker (production)
+
+```bash
+cd backend
+docker compose up -d
+```
+
+### Local development
+
+```bash
+./dev.sh   # starts Postgres, Go backend, and frontend
+```
+
 Dashboard at `http://localhost:5173`
+
+## Features
+
+- **DNS-based onboarding** — CNAME your domain, Veil handles the rest (auto-TLS via Caddy)
+- **Async LLM classification** — regex runs inline (~0.1ms), full LLM pipeline runs in background so requests are never delayed
+- **Self-improving agents** — Peek discovers attacks, Poke tests defences, Patch adapts rules
+- **IP threat intelligence** — automatic blocking from threat feeds + decision engine (ban, captcha, throttle)
+- **Real-time dashboard** — live request feed, threat analytics, agent activity via SSE
+- **GitHub OAuth** — sign in with GitHub, optional repo connection for code-level findings
+- **Site-scoped data** — each project gets its own isolated dashboard and analytics
 
 ## Tracks
 

@@ -44,15 +44,15 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# ── Go backend ──────────────────────────────────────────────────────
+# ── Backend ───────────────────────────────────────────────────────
 echo "[go] Starting Go backend on http://localhost:8080"
 (
-  cd "$ROOT/go-backend"
+  cd "$ROOT/backend"
   export DATABASE_URL="postgres://veil:veil@localhost:5432/veil?sslmode=disable"
-  # Load .env (check go-backend/ first, then project root)
+  # Load .env (check backend/ first, then project root)
   # Temporarily disable nounset — .env values may contain $ characters
   set +u
-  for envfile in "$ROOT/go-backend/.env" "$ROOT/.env"; do
+  for envfile in "$ROOT/backend/.env" "$ROOT/.env"; do
     if [ -f "$envfile" ]; then
       set -a
       source "$envfile"
