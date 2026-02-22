@@ -57,6 +57,11 @@ const SECTION_META = {
     description: 'Vulnerabilities discovered in your source code',
     helpText: 'When Veil detects attacks in your traffic, it scans your linked GitHub repository to find the exact vulnerable code. Each finding shows the file, line numbers, and a suggested fix.',
   },
+  blocklist: {
+    title: 'Blocklist',
+    description: 'Active IP bans, throttles, and threat intelligence',
+    helpText: 'The LEARN agent automatically bans repeat offenders and throttles suspicious IPs. This page shows all active decisions and threat intelligence feeds.',
+  },
   setup: {
     title: 'Setup',
     description: 'Configuration and testing',
@@ -680,6 +685,207 @@ function RepoConnectCard({ siteId, repoInfo, setRepoInfo, repoLoading }) {
 }
 
 /* ------------------------------------------------------------ */
+/*  Blocklist panel                                              */
+/* ------------------------------------------------------------ */
+function BlocklistPanel({ siteId }) {
+  const [decisions, setDecisions] = useState([])
+  const [threatIPs, setThreatIPs] = useState([])
+  const [totalIPs, setTotalIPs] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState('decisions')
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [decRes, ipRes] = await Promise.all([
+          fetch(`/api/sites/${siteId}/decisions`),
+          fetch(`/api/sites/${siteId}/threat-ips`),
+        ])
+        if (decRes.ok) setDecisions(await decRes.json())
+        if (ipRes.ok) {
+          const data = await ipRes.json()
+          setThreatIPs(data.entries || [])
+          setTotalIPs(data.total_count || 0)
+        }
+      } catch {}
+      setLoading(false)
+    }
+    fetchData()
+    const interval = setInterval(fetchData, 15000)
+    return () => clearInterval(interval)
+  }, [siteId])
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[200px] items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-agent" />
+      </div>
+    )
+  }
+
+  const decisionTypeColor = (type) => {
+    switch (type) {
+      case 'ban': return 'bg-blocked/15 text-blocked'
+      case 'throttle': return 'bg-suspicious/15 text-suspicious'
+      case 'captcha': return 'bg-agent/15 text-agent'
+      default: return 'bg-surface text-muted'
+    }
+  }
+
+  const tierColor = (tier) => {
+    switch (tier) {
+      case 'ban': case 'block': return 'bg-blocked/15 text-blocked'
+      case 'throttle': return 'bg-suspicious/15 text-suspicious'
+      default: return 'bg-surface text-muted'
+    }
+  }
+
+  return (
+    <div>
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-4 px-6 py-5 border-b border-border">
+        <div className="rounded-xl border border-border bg-surface/30 px-5 py-4">
+          <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Active decisions</p>
+          <p className="mt-1 text-[28px] font-bold tabular-nums text-text">{decisions.length}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-surface/30 px-5 py-4">
+          <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Threat IPs</p>
+          <p className="mt-1 text-[28px] font-bold tabular-nums text-text">{totalIPs}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-surface/30 px-5 py-4">
+          <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Auto-learned</p>
+          <p className="mt-1 text-[28px] font-bold tabular-nums text-agent">
+            {decisions.filter(d => d.source === 'learn-agent').length}
+          </p>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 px-6 pt-4 pb-2">
+        {[
+          { key: 'decisions', label: 'Active Decisions', count: decisions.length },
+          { key: 'threat-ips', label: 'Threat Intelligence', count: totalIPs },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`rounded-lg px-4 py-2 text-[13px] font-medium transition-colors ${
+              tab === t.key
+                ? 'bg-surface border border-border text-text'
+                : 'bg-transparent border border-transparent text-muted hover:text-text'
+            }`}
+          >
+            {t.label}
+            <span className="ml-1.5 rounded-full bg-bg px-1.5 py-0.5 text-[11px] tabular-nums">{t.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Decision list */}
+      {tab === 'decisions' && (
+        <div className="px-6 py-3">
+          {decisions.length === 0 ? (
+            <div className="flex min-h-[200px] flex-col items-center justify-center text-center py-10">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-safe/20 bg-safe/[0.06]">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-safe">
+                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              </div>
+              <p className="text-[15px] font-semibold text-text">No active decisions</p>
+              <p className="mt-1 max-w-xs text-[13px] text-dim">
+                When the LEARN agent detects repeat offenders, it will auto-ban or throttle them here.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {decisions.map((d, i) => (
+                <div key={d.id || i} className="flex items-center gap-4 rounded-lg border border-border/50 bg-surface/20 px-5 py-3.5">
+                  {/* Decision type badge */}
+                  <span className={`shrink-0 rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${decisionTypeColor(d.decision_type)}`}>
+                    {d.decision_type}
+                  </span>
+
+                  {/* IP */}
+                  <span className="font-mono text-[14px] font-medium text-text min-w-[130px]">{d.ip}</span>
+
+                  {/* Reason */}
+                  <span className="flex-1 truncate text-[13px] text-dim">{d.reason}</span>
+
+                  {/* Source */}
+                  <span className="shrink-0 text-[12px] text-muted">
+                    via <span className="font-medium text-text/70">{d.source || 'manual'}</span>
+                  </span>
+
+                  {/* Confidence */}
+                  {d.confidence > 0 && (
+                    <span className="shrink-0 font-mono text-[12px] text-muted">
+                      {Math.round(d.confidence * 100)}%
+                    </span>
+                  )}
+
+                  {/* Expiry */}
+                  {d.expires_at && (
+                    <span className="shrink-0 text-[12px] text-muted tabular-nums">
+                      {relativeTime(d.expires_at)}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Threat IPs list */}
+      {tab === 'threat-ips' && (
+        <div className="px-6 py-3">
+          {threatIPs.length === 0 ? (
+            <div className="flex min-h-[200px] flex-col items-center justify-center text-center py-10">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-surface">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted">
+                  <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                </svg>
+              </div>
+              <p className="text-[15px] font-semibold text-text">No threat intelligence data yet</p>
+              <p className="mt-1 max-w-xs text-[13px] text-dim">
+                Threat IP feeds will populate here as data is ingested from community sources.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-border">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-border/50 text-[11px] font-medium tracking-wide text-muted uppercase bg-surface/30">
+                    <th className="px-4 py-2.5">IP Address</th>
+                    <th className="px-4 py-2.5">Tier</th>
+                    <th className="px-4 py-2.5">Source</th>
+                    <th className="px-4 py-2.5">Added</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {threatIPs.map((ip, i) => (
+                    <tr key={ip.id || i} className="border-b border-border/30 text-[13px] hover:bg-surface/20 transition-colors">
+                      <td className="px-4 py-2.5 font-mono font-medium text-text">{ip.ip}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold uppercase ${tierColor(ip.tier)}`}>
+                          {ip.tier}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-muted">{ip.source}</td>
+                      <td className="px-4 py-2.5 text-muted tabular-nums">{ip.fetched_at ? relativeTime(ip.fetched_at) : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------ */
 /*  Main Dashboard                                               */
 /* ------------------------------------------------------------ */
 export function Dashboard({ site, activeSection = 'site' }) {
@@ -1047,6 +1253,20 @@ export function Dashboard({ site, activeSection = 'site' }) {
                 repoLinked={repoInfo?.linked === true}
               />
             )}
+          </div>
+        )}
+
+        {/* ================================================================ */}
+        {/*  BLOCKLIST SECTION                                               */}
+        {/* ================================================================ */}
+        {activeSection === 'blocklist' && (
+          <div className="mx-auto max-w-5xl">
+            <SectionHeader
+              title={SECTION_META.blocklist.title}
+              description={SECTION_META.blocklist.description}
+              helpText={SECTION_META.blocklist.helpText}
+            />
+            <BlocklistPanel siteId={site.site_id} />
           </div>
         )}
 
