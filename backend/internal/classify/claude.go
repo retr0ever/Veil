@@ -80,3 +80,43 @@ func ClaudeClassify(ctx context.Context, raw, systemPrompt string) *Result {
 	result.ResponseTimeMs = elapsed
 	return result
 }
+
+// ClaudeGenerate calls Claude via AWS Bedrock and returns the raw text response.
+// Used by agents that need freeform LLM output (not classifier-shaped JSON).
+func ClaudeGenerate(ctx context.Context, userPrompt, systemPrompt string) (string, error) {
+	region := os.Getenv("AWS_REGION")
+	if region == "" {
+		region = "eu-west-1"
+	}
+	model := os.Getenv("BEDROCK_MODEL")
+	if model == "" {
+		model = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+	}
+
+	if os.Getenv("AWS_ACCESS_KEY_ID") == "" && os.Getenv("AWS_PROFILE") == "" {
+		return "", fmt.Errorf("AWS credentials not configured")
+	}
+
+	client := anthropic.NewClient(
+		bedrock.WithLoadDefaultConfig(ctx),
+	)
+
+	message, err := client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     anthropic.Model(model),
+		MaxTokens: 1024,
+		System: []anthropic.TextBlockParam{
+			{Text: systemPrompt},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(userPrompt)),
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("Claude API error: %w", err)
+	}
+	if len(message.Content) == 0 {
+		return "", fmt.Errorf("empty Claude response")
+	}
+
+	return strings.TrimSpace(message.Content[0].Text), nil
+}

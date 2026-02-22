@@ -19,12 +19,12 @@ export function NavBar({
 
   return (
     <>
-      <header className={cx('flex flex-wrap items-start justify-between gap-6', className)}>
+      <header className={cx('flex flex-wrap items-center justify-between gap-6', className)}>
         <a href="/" className={cx('font-logo font-logo-main text-[#f6f1f9]', logoSizeClass)}>
           VEIL.
         </a>
 
-        <nav className={cx('flex items-center gap-5 pt-1 md:gap-8', navClassName)}>
+        <nav className={cx('flex items-center gap-5 md:gap-8', navClassName)}>
           {links.map((link) => {
             const active = link.href === activeHref
             return (

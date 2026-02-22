@@ -90,7 +90,7 @@ export function LandingPage() {
             }}
           />
 
-          <div className="relative z-10 mx-auto max-w-[1600px] px-2 py-24 md:px-4 md:py-36">
+          <div className="relative z-10 mx-auto max-w-[1600px] px-2 pb-12 pt-24 md:px-4 md:pb-16 md:pt-36">
             <div className="grid items-center gap-10 md:flex md:items-center md:justify-between md:gap-20">
               <div className="max-w-[900px]">
                 <h1 className="text-[44px] font-semibold leading-[1.08] text-[#f8f4fb] md:text-[56px]">
@@ -150,7 +150,7 @@ export function LandingPage() {
             }}
           />
 
-          <div className="relative z-10 mx-auto max-w-[1450px] px-6 py-24 md:px-10 md:py-32">
+          <div className="relative z-10 mx-auto max-w-[1450px] px-6 pb-24 pt-12 md:px-10 md:pb-32 md:pt-16">
             <div className="grid items-start gap-16 md:grid-cols-[0.42fr_0.58fr] lg:gap-20">
               <div>
                 <div className="space-y-3">

@@ -2,13 +2,17 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/veil-waf/veil-go/internal/classify"
 	"github.com/veil-waf/veil-go/internal/db"
+	"github.com/veil-waf/veil-go/internal/memory"
 	"github.com/veil-waf/veil-go/internal/ws"
 )
 
@@ -18,17 +22,19 @@ type Loop struct {
 	pipeline *classify.Pipeline
 	ws       *ws.Manager
 	logger   *slog.Logger
+	mem      *memory.Client // nil when MEM0_API_KEY not set
 	running  atomic.Bool
 	cycleNum atomic.Int64
 }
 
 // NewLoop creates a new agent loop.
-func NewLoop(database *db.DB, pipeline *classify.Pipeline, wsManager *ws.Manager, logger *slog.Logger) *Loop {
+func NewLoop(database *db.DB, pipeline *classify.Pipeline, wsManager *ws.Manager, logger *slog.Logger, mem *memory.Client) *Loop {
 	return &Loop{
 		db:       database,
 		pipeline: pipeline,
 		ws:       wsManager,
 		logger:   logger,
+		mem:      mem,
 	}
 }
 
@@ -81,6 +87,13 @@ func (l *Loop) runCycle(ctx context.Context) *CycleResult {
 
 	l.logger.Info("agent cycle starting", "cycle_id", cycleID)
 
+	// Recall system-level context from previous cycles
+	systemContext := l.recall(ctx, "system",
+		"What happened in recent cycles? What is the overall trend in bypass rates and defense effectiveness?")
+	if systemContext != "" {
+		l.logger.Info("cycle context loaded from memory", "cycle_id", cycleID)
+	}
+
 	// 1. Peek: discover new techniques
 	l.broadcast("peek", "running", "Scanning for new attack techniques...")
 	discovered := l.runPeek(ctx)
@@ -107,88 +120,419 @@ func (l *Loop) runCycle(ctx context.Context) *CycleResult {
 	l.logAgent(ctx, "system", "cycle_summary",
 		fmt.Sprintf("Cycle #%d: discovered=%d, bypasses=%d", cycleID, discovered, bypasses), true)
 
+	// Store cycle summary in system memory
+	patchNote := "all defenses held."
+	if bypasses > 0 {
+		patchNote = "patch agent deployed fixes."
+	}
+	l.remember(ctx, "system",
+		fmt.Sprintf("Cycle #%d complete: discovered %d new techniques, found %d bypasses, %s",
+			cycleID, discovered, bypasses, patchNote),
+		map[string]any{"cycle": cycleID, "discovered": discovered, "bypasses": bypasses})
+
 	// Broadcast updated stats
 	l.broadcastStats(ctx)
 
 	return result
 }
 
-// runPeek discovers new threat techniques. Currently uses the threat DB
-// and regex classifier patterns to generate synthetic payloads.
+// allCategories lists OWASP-style attack categories the WAF should cover.
+var allCategories = []string{
+	"sqli", "xss", "path_traversal", "command_injection", "ssrf",
+	"xxe", "header_injection", "auth_bypass", "encoding_evasion",
+}
+
+// fallbackPayloads provides a basic payload per category for when LLM generation fails.
+var fallbackPayloads = map[string]struct {
+	name, payload, severity string
+}{
+	"sqli":              {"Union-based SQLi", "' UNION SELECT 1,2,3--", "high"},
+	"xss":               {"Reflected XSS", "<script>alert(1)</script>", "high"},
+	"path_traversal":    {"Path traversal", "../../etc/passwd", "medium"},
+	"command_injection": {"Command injection", "; cat /etc/passwd", "high"},
+	"ssrf":              {"SSRF probe", "http://169.254.169.254/latest/meta-data/", "high"},
+	"xxe":               {"XXE injection", `<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>`, "high"},
+	"header_injection":  {"Header injection", "Host: evil.com\r\nX-Injected: true", "medium"},
+	"auth_bypass":       {"Auth bypass", "admin' OR '1'='1", "high"},
+	"encoding_evasion":  {"Encoding evasion", "%253Cscript%253Ealert(1)%253C%252Fscript%253E", "medium"},
+}
+
+// runPeek discovers new threat techniques using LLM-powered generation
+// guided by memory of past discovery strategies.
 func (l *Loop) runPeek(ctx context.Context) int {
-	// For now, peek checks if there are any threat categories not yet covered
-	// by discovered threats and adds placeholder entries.
-	categories := []struct {
-		name     string
-		category string
-		payload  string
-		severity string
-	}{
-		{"Union-based SQLi", "sqli", "' UNION SELECT 1,2,3--", "high"},
-		{"Reflected XSS", "xss", "<script>alert(1)</script>", "high"},
-		{"Path traversal", "path_traversal", "../../etc/passwd", "medium"},
-		{"Command injection", "command_injection", "; cat /etc/passwd", "high"},
-		{"SSRF probe", "ssrf", "http://169.254.169.254/latest/meta-data/", "high"},
+	// Fetch existing threats to find coverage gaps
+	threats, err := l.db.GetThreats(ctx, 0)
+	if err != nil {
+		l.logger.Error("peek: failed to get threats", "err", err)
+		return 0
 	}
 
+	coveredCategories := map[string]int{}
+	for _, t := range threats {
+		coveredCategories[t.Category]++
+	}
+
+	// Ask memory for guidance on what to explore
+	memContext := l.recall(ctx, "peek",
+		"What attack categories or techniques should I explore next? What discovery strategies have worked well?")
+
+	// Find underexplored categories (fewer than 3 variants)
+	targetCategories := l.pickTargetCategories(coveredCategories)
+
 	discovered := 0
-	for _, c := range categories {
-		threats, err := l.db.GetThreats(ctx, 0) // site_id=0 for global
+
+	// Use Crusoe LLM to generate novel payloads for each target category
+	for _, cat := range targetCategories {
+		prompt := fmt.Sprintf(
+			`Generate 2 novel, realistic HTTP attack payloads for the category "%s".
+Each payload should be different from common/obvious examples.
+%s
+Respond with a JSON array of objects: [{"name": "technique name", "payload": "the raw payload", "severity": "high|medium|low"}]
+Only respond with the JSON array.`, cat, memContext)
+
+		raw, err := classify.CrusoeGenerate(ctx, prompt,
+			"You are a security researcher generating attack payloads for WAF testing. Respond only with JSON.")
 		if err != nil {
+			l.logger.Warn("peek: Crusoe generate failed", "category", cat, "err", err)
+			raw = "" // will fall through to fallback
+		}
+
+		payloads := parsePeekPayloads(raw)
+		if len(payloads) == 0 {
+			// Fallback: insert a basic payload for this category
+			if fb, ok := fallbackPayloads[cat]; ok {
+				if !l.threatPayloadExists(threats, fb.payload) {
+					l.db.InsertThreat(ctx, &db.Threat{
+						TechniqueName: fb.name,
+						Category:      cat,
+						Source:        "peek",
+						RawPayload:    fb.payload,
+						Severity:      fb.severity,
+					})
+					discovered++
+				}
+			}
 			continue
 		}
 
-		found := false
-		for _, t := range threats {
-			if t.Category == c.category {
-				found = true
-				break
+		for _, p := range payloads {
+			if p.Name == "" || p.Payload == "" {
+				continue
 			}
-		}
-
-		if !found {
+			if l.threatPayloadExists(threats, p.Payload) {
+				continue
+			}
+			sev := p.Severity
+			if sev == "" {
+				sev = "medium"
+			}
 			l.db.InsertThreat(ctx, &db.Threat{
-				TechniqueName: c.name,
-				Category:      c.category,
-				Source:         "peek",
-				RawPayload:    c.payload,
-				Severity:      c.severity,
+				TechniqueName: p.Name,
+				Category:      cat,
+				Source:        "peek",
+				RawPayload:    p.Payload,
+				Severity:      sev,
 			})
 			discovered++
 		}
 	}
 
-	l.logAgent(ctx, "peek", "scan", fmt.Sprintf("Discovered %d new techniques", discovered), true)
+	// Store what we learned in memory
+	l.remember(ctx, "peek",
+		fmt.Sprintf("Cycle %d peek: explored categories %v, discovered %d new techniques.",
+			l.cycleNum.Load(), targetCategories, discovered),
+		map[string]any{"cycle": l.cycleNum.Load(), "discovered": discovered})
+
+	l.logAgent(ctx, "peek", "scan",
+		fmt.Sprintf("Discovered %d new techniques in categories %v", discovered, targetCategories), true)
 	return discovered
 }
 
-// runPoke tests current defences against known threats.
+// pickTargetCategories selects categories that need more attack variants.
+func (l *Loop) pickTargetCategories(covered map[string]int) []string {
+	// Categories with fewer than 3 variants
+	var targets []string
+	for _, cat := range allCategories {
+		if covered[cat] < 3 {
+			targets = append(targets, cat)
+		}
+	}
+	if len(targets) > 0 {
+		return targets
+	}
+
+	// All categories well-covered — pick the 3 with fewest variants
+	type catCount struct {
+		cat   string
+		count int
+	}
+	sorted := make([]catCount, 0, len(allCategories))
+	for _, cat := range allCategories {
+		sorted = append(sorted, catCount{cat, covered[cat]})
+	}
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].count < sorted[j].count })
+
+	for i := 0; i < 3 && i < len(sorted); i++ {
+		targets = append(targets, sorted[i].cat)
+	}
+	return targets
+}
+
+func (l *Loop) threatPayloadExists(threats []db.Threat, payload string) bool {
+	for _, t := range threats {
+		if t.RawPayload == payload {
+			return true
+		}
+	}
+	return false
+}
+
+type peekPayload struct {
+	Name     string `json:"name"`
+	Payload  string `json:"payload"`
+	Severity string `json:"severity"`
+}
+
+func parsePeekPayloads(raw string) []peekPayload {
+	if raw == "" {
+		return nil
+	}
+	var payloads []peekPayload
+	if err := json.Unmarshal([]byte(raw), &payloads); err == nil {
+		return payloads
+	}
+	// Try extracting JSON array from surrounding text
+	start := strings.Index(raw, "[")
+	end := strings.LastIndex(raw, "]")
+	if start >= 0 && end > start {
+		if err := json.Unmarshal([]byte(raw[start:end+1]), &payloads); err == nil {
+			return payloads
+		}
+	}
+	return nil
+}
+
+// runPoke tests current defences against known threats with smart prioritization.
 func (l *Loop) runPoke(ctx context.Context) int {
 	threats, err := l.db.GetThreats(ctx, 0)
 	if err != nil {
+		l.logger.Error("poke: failed to get threats", "err", err)
 		return 0
 	}
 
-	bypasses := 0
+	// Ask memory which patterns tend to bypass (used for logging context)
+	_ = l.recall(ctx, "poke",
+		"Which attack categories or techniques have historically bypassed our defenses?")
+
+	// Separate into priority buckets
+	var neverTested, previouslyBypassed, patched []db.Threat
 	for _, t := range threats {
-		if t.Blocked {
-			continue
-		}
-		result := l.pipeline.ClassifyWithRules(ctx, t.RawPayload, nil)
-		if !result.Blocked {
-			bypasses++
+		if t.TestedAt == nil {
+			neverTested = append(neverTested, t)
+		} else if !t.Blocked {
+			previouslyBypassed = append(previouslyBypassed, t)
+		} else {
+			patched = append(patched, t)
 		}
 	}
 
-	l.logAgent(ctx, "poke", "test", fmt.Sprintf("Tested %d threats, %d bypasses", len(threats), bypasses), true)
+	// Test order: never-tested first, then previously bypassing, then regression on patched
+	var testQueue []db.Threat
+	testQueue = append(testQueue, neverTested...)
+	testQueue = append(testQueue, previouslyBypassed...)
+	testQueue = append(testQueue, patched...)
+
+	// Cap at 15 per cycle to bound runtime
+	if len(testQueue) > 15 {
+		testQueue = testQueue[:15]
+	}
+
+	bypasses := 0
+	var bypassNames []string
+
+	for _, t := range testQueue {
+		result := l.pipeline.ClassifyWithRules(ctx, t.RawPayload, nil)
+		l.db.MarkThreatTested(ctx, t.ID, result.Blocked)
+
+		if !result.Blocked {
+			bypasses++
+			bypassNames = append(bypassNames, fmt.Sprintf("%s (%s)", t.TechniqueName, t.Category))
+		}
+	}
+
+	// Remember what we found
+	if bypasses > 0 {
+		l.remember(ctx, "poke",
+			fmt.Sprintf("Cycle %d poke: tested %d threats, found %d bypasses: %v",
+				l.cycleNum.Load(), len(testQueue), bypasses, bypassNames),
+			map[string]any{"cycle": l.cycleNum.Load(), "bypasses": bypasses, "bypass_names": bypassNames})
+	} else {
+		l.remember(ctx, "poke",
+			fmt.Sprintf("Cycle %d poke: tested %d threats, all blocked successfully.",
+				l.cycleNum.Load(), len(testQueue)),
+			map[string]any{"cycle": l.cycleNum.Load(), "bypasses": 0})
+	}
+
+	l.logAgent(ctx, "poke", "test",
+		fmt.Sprintf("Tested %d threats, %d bypasses (priority: %d untested, %d prev-bypass, %d regression)",
+			len(testQueue), bypasses, len(neverTested), len(previouslyBypassed), len(patched)), true)
 	return bypasses
 }
 
-// runPatch applies patches for discovered bypasses.
+// runPatch analyzes bypasses and generates improved detection prompts using Claude.
 func (l *Loop) runPatch(ctx context.Context) {
-	// In a full implementation, this would update classification rules.
-	// For now, it just logs the action.
-	l.logAgent(ctx, "patch", "patch", "Rules updated based on bypass analysis", true)
+	// Get all unblocked (bypassing) threats that have been tested
+	threats, err := l.db.GetThreats(ctx, 0)
+	if err != nil {
+		l.logger.Error("patch: failed to get threats", "err", err)
+		return
+	}
+
+	var bypassing []db.Threat
+	for _, t := range threats {
+		if !t.Blocked && t.TestedAt != nil {
+			bypassing = append(bypassing, t)
+		}
+	}
+	if len(bypassing) == 0 {
+		return
+	}
+
+	// Recall past fix strategies
+	memContext := l.recall(ctx, "patch",
+		"What fix strategies have I tried before? Which worked and which failed?")
+
+	// Get current rules
+	currentRules, err := l.db.GetCurrentRules(ctx, 0)
+	if err != nil {
+		currentRules = &db.Rules{
+			Version:      0,
+			CrusoePrompt: classify.DefaultCrusoePrompt(),
+			ClaudePrompt: classify.DefaultClaudePrompt(),
+		}
+	}
+
+	// Build bypass summary for Claude
+	var bypassSummary strings.Builder
+	for _, t := range bypassing {
+		fmt.Fprintf(&bypassSummary, "- [%s] %s: %s\n", t.Category, t.TechniqueName, t.RawPayload)
+	}
+
+	// Ask Claude to generate improved prompts
+	patchPrompt := fmt.Sprintf(`You are a WAF security engineer. The following attack payloads are BYPASSING our current detection.
+
+BYPASSING PAYLOADS:
+%s
+CURRENT CRUSOE (fast) SYSTEM PROMPT:
+%s
+
+CURRENT CLAUDE (deep) SYSTEM PROMPT:
+%s
+
+%s
+Analyze why these bypass and generate improved system prompts. Respond with JSON:
+{"crusoe_prompt": "improved fast classifier prompt", "claude_prompt": "improved deep analysis prompt", "reasoning": "explanation of what you changed and why"}
+
+Only respond with the JSON object.`,
+		bypassSummary.String(), currentRules.CrusoePrompt, currentRules.ClaudePrompt, memContext)
+
+	raw, err := classify.ClaudeGenerate(ctx, patchPrompt,
+		"You are an expert at writing WAF detection prompts. Generate improved prompts that catch the bypassing payloads without increasing false positives.")
+	if err != nil {
+		l.logger.Warn("patch: Claude generate failed", "err", err)
+		l.remember(ctx, "patch",
+			fmt.Sprintf("Cycle %d patch: Claude generation failed: %v", l.cycleNum.Load(), err),
+			map[string]any{"cycle": l.cycleNum.Load(), "success": false})
+		l.logAgent(ctx, "patch", "patch", fmt.Sprintf("Claude generation failed: %v", err), false)
+		return
+	}
+
+	// Parse the response
+	type patchResponse struct {
+		CrusoePrompt string `json:"crusoe_prompt"`
+		ClaudePrompt string `json:"claude_prompt"`
+		Reasoning    string `json:"reasoning"`
+	}
+
+	var patch patchResponse
+	if err := json.Unmarshal([]byte(raw), &patch); err != nil {
+		// Try extracting JSON from surrounding text
+		start := strings.Index(raw, "{")
+		end := strings.LastIndex(raw, "}")
+		if start >= 0 && end > start {
+			json.Unmarshal([]byte(raw[start:end+1]), &patch)
+		}
+	}
+
+	if patch.CrusoePrompt == "" && patch.ClaudePrompt == "" {
+		l.remember(ctx, "patch",
+			fmt.Sprintf("Cycle %d patch: Claude failed to generate new prompts.",
+				l.cycleNum.Load()),
+			map[string]any{"cycle": l.cycleNum.Load(), "success": false})
+		l.logAgent(ctx, "patch", "patch", "Failed to generate improved prompts", false)
+		return
+	}
+
+	// Use current prompt as fallback if one is empty
+	if patch.CrusoePrompt == "" {
+		patch.CrusoePrompt = currentRules.CrusoePrompt
+	}
+	if patch.ClaudePrompt == "" {
+		patch.ClaudePrompt = currentRules.ClaudePrompt
+	}
+
+	// Insert new rules version
+	newVersion := currentRules.Version + 1
+	err = l.db.InsertRules(ctx, &db.Rules{
+		SiteID:       0,
+		Version:      newVersion,
+		CrusoePrompt: patch.CrusoePrompt,
+		ClaudePrompt: patch.ClaudePrompt,
+		UpdatedBy:    "patch-agent",
+	})
+	if err != nil {
+		l.logger.Error("patch: failed to insert rules", "err", err)
+		return
+	}
+
+	// Re-test bypassing threats with new rules
+	newRules := &db.Rules{
+		Version:      newVersion,
+		CrusoePrompt: patch.CrusoePrompt,
+		ClaudePrompt: patch.ClaudePrompt,
+	}
+
+	fixed := 0
+	stillBypassing := 0
+	for _, t := range bypassing {
+		result := l.pipeline.ClassifyWithRules(ctx, t.RawPayload, newRules)
+		if result.Blocked {
+			l.db.MarkThreatTested(ctx, t.ID, true)
+			fixed++
+		} else {
+			stillBypassing++
+		}
+	}
+
+	// Remember the outcome
+	outcome := "All bypasses fixed."
+	if stillBypassing > 0 {
+		outcome = fmt.Sprintf("Still %d bypassing — need different approach next cycle.", stillBypassing)
+	}
+	l.remember(ctx, "patch",
+		fmt.Sprintf("Cycle %d patch: updated rules to v%d. Fixed %d/%d bypasses. Reasoning: %s. %s",
+			l.cycleNum.Load(), newVersion, fixed, len(bypassing), patch.Reasoning, outcome),
+		map[string]any{
+			"cycle":           l.cycleNum.Load(),
+			"rules_version":   newVersion,
+			"fixed":           fixed,
+			"still_bypassing": stillBypassing,
+			"success":         stillBypassing == 0,
+		})
+
+	l.logAgent(ctx, "patch", "patch",
+		fmt.Sprintf("Rules v%d: fixed %d/%d bypasses. %s", newVersion, fixed, len(bypassing), patch.Reasoning),
+		fixed > 0)
 }
 
 func (l *Loop) logAgent(ctx context.Context, agent, action, detail string, success bool) {
@@ -233,4 +577,75 @@ func safeBlockRate(total, blocked int64) float64 {
 		return 0
 	}
 	return float64(blocked) / float64(total) * 100
+}
+
+// remember stores a memory for the given agent. No-op if mem0 is not configured.
+func (l *Loop) remember(ctx context.Context, agent, observation string, meta map[string]any) {
+	if l.mem == nil {
+		return
+	}
+	err := l.mem.Add(ctx, &memory.AddRequest{
+		Messages: []memory.Message{
+			{Role: "assistant", Content: observation},
+		},
+		AgentID:  "veil-" + agent,
+		Metadata: meta,
+		Infer:    true,
+	})
+	if err != nil {
+		l.logger.Warn("mem0 add failed", "agent", agent, "err", err)
+		return
+	}
+	// Broadcast memory event to frontend
+	l.broadcast("memory", "stored", fmt.Sprintf("[%s] %s", agent, truncateStr(observation, 150)))
+}
+
+// recall searches memories relevant to the given query for an agent.
+// Returns empty string if mem0 is not configured or search fails.
+func (l *Loop) recall(ctx context.Context, agent, query string) string {
+	if l.mem == nil {
+		return ""
+	}
+	memories, err := l.mem.Search(ctx, &memory.SearchRequest{
+		Query:   query,
+		AgentID: "veil-" + agent,
+		TopK:    5,
+	})
+	if err != nil {
+		l.logger.Warn("mem0 search failed", "agent", agent, "err", err)
+		return ""
+	}
+	if len(memories) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("Relevant memories from previous cycles:\n")
+	for i, m := range memories {
+		fmt.Fprintf(&sb, "%d. %s\n", i+1, m.Memory)
+	}
+	return sb.String()
+}
+
+// GetMemories returns recent memories for the given agent. Used by the API.
+func (l *Loop) GetMemories(ctx context.Context, agent string) []memory.Memory {
+	if l.mem == nil {
+		return nil
+	}
+	memories, err := l.mem.Search(ctx, &memory.SearchRequest{
+		Query:   "recent activity, discoveries, bypasses, patches, and learnings",
+		AgentID: "veil-" + agent,
+		TopK:    10,
+	})
+	if err != nil {
+		l.logger.Warn("failed to fetch memories", "err", err)
+		return nil
+	}
+	return memories
+}
+
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
 }

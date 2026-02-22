@@ -16,6 +16,7 @@ import (
 	"github.com/veil-waf/veil-go/internal/auth"
 	"github.com/veil-waf/veil-go/internal/classify"
 	"github.com/veil-waf/veil-go/internal/db"
+	"github.com/veil-waf/veil-go/internal/memory"
 	veildns "github.com/veil-waf/veil-go/internal/dns"
 	"github.com/veil-waf/veil-go/internal/handlers"
 	"github.com/veil-waf/veil-go/internal/proxy"
@@ -71,8 +72,16 @@ func main() {
 	// WebSocket manager
 	wsManager := ws.NewManager(database, logger)
 
+	// Memory layer (optional — nil if MEM0_API_KEY not set)
+	memClient := memory.NewClient()
+	if memClient != nil {
+		logger.Info("mem0 memory layer enabled")
+	} else {
+		logger.Info("mem0 memory layer disabled (MEM0_API_KEY not set)")
+	}
+
 	// Agent loop
-	agentLoop := agents.NewLoop(database, pipeline, wsManager, logger)
+	agentLoop := agents.NewLoop(database, pipeline, wsManager, logger, memClient)
 
 	// Proxy handler
 	proxyHandler := proxy.NewHandler(database, pipeline, sseHub, limiter, logger)
@@ -157,6 +166,7 @@ func main() {
 		api.Post("/agents/peek/run", compatHandler.TriggerPeek)
 		api.Post("/agents/poke/run", compatHandler.TriggerPoke)
 		api.Post("/agents/cycle", compatHandler.TriggerCycle)
+		api.Get("/agents/memories", compatHandler.GetAgentMemories)
 
 		// Sites
 		api.Post("/sites", siteHandler.CreateSite)

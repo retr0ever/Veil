@@ -109,6 +109,65 @@ func CrusoeClassify(ctx context.Context, raw, systemPrompt string) *Result {
 	return result
 }
 
+// CrusoeGenerate calls the Crusoe Inference API and returns the raw text response.
+// Used by agents that need freeform LLM output (not classifier-shaped JSON).
+func CrusoeGenerate(ctx context.Context, userPrompt, systemPrompt string) (string, error) {
+	apiURL := os.Getenv("CRUSOE_API_URL")
+	if apiURL == "" {
+		apiURL = "https://hackeurope.crusoecloud.com/v1"
+	}
+	apiKey := os.Getenv("CRUSOE_API_KEY")
+	model := os.Getenv("CRUSOE_MODEL")
+	if model == "" {
+		model = "NVFP4/Qwen3-235B-A22B-Instruct-2507-FP4"
+	}
+	if apiKey == "" || apiKey == "placeholder" {
+		return "", fmt.Errorf("Crusoe API key not configured")
+	}
+
+	body, _ := json.Marshal(map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": userPrompt},
+		},
+		"temperature": 0.0,
+		"max_tokens":  500,
+	})
+
+	req, _ := http.NewRequestWithContext(ctx, "POST", apiURL+"/chat/completions", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := crusoeClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Crusoe connection error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Crusoe API error: %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("failed to read Crusoe response: %w", err)
+	}
+
+	var chatResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(data, &chatResp); err != nil || len(chatResp.Choices) == 0 {
+		return "", fmt.Errorf("failed to parse Crusoe response")
+	}
+
+	return strings.TrimSpace(chatResp.Choices[0].Message.Content), nil
+}
+
 // parseJSONResult extracts a Result from a JSON string, handling LLM output
 // that may contain extra text around the JSON.
 func parseJSONResult(content string) *Result {
