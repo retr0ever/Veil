@@ -12,11 +12,13 @@ var crowdsecData embed.FS
 
 // Compiled CrowdSec pattern sets — loaded once at init.
 var (
-	crowdsecBadUAs        []*regexp.Regexp
-	crowdsecSQLiPatterns  []string // plain string contains-match (URL-decoded)
-	crowdsecXSSPatterns   []string
-	crowdsecPathPatterns  []string
-	crowdsecBackdoorPaths []string // known webshell/backdoor filenames
+	crowdsecBadUAs          []*regexp.Regexp
+	crowdsecSQLiPatterns    []string // plain string contains-match (URL-decoded)
+	crowdsecXSSPatterns     []string
+	crowdsecPathPatterns    []string
+	crowdsecBackdoorPaths   []string // known webshell/backdoor filenames
+	crowdsecCmdInjPatterns  []string // command injection patterns
+	crowdsecLog4ShPatterns  []string // JNDI/Log4Shell + SSTI patterns
 )
 
 func init() {
@@ -25,6 +27,8 @@ func init() {
 	crowdsecXSSPatterns = loadStringFile("crowdsec-data/xss_patterns.txt")
 	crowdsecPathPatterns = loadStringFile("crowdsec-data/path_traversal.txt")
 	crowdsecBackdoorPaths = loadStringFile("crowdsec-data/backdoors.txt")
+	crowdsecCmdInjPatterns = loadStringFile("crowdsec-data/command_injection.txt")
+	crowdsecLog4ShPatterns = loadStringFile("crowdsec-data/log4shell.txt")
 }
 
 // loadRegexFile reads a file of regex patterns (one per line, # comments) and
@@ -145,13 +149,37 @@ func CrowdSecMatchBackdoor(rawRequest string) bool {
 	return false
 }
 
+// CrowdSecMatchCmdInj checks the request against CrowdSec command injection patterns.
+func CrowdSecMatchCmdInj(searchText string) bool {
+	lower := strings.ToLower(searchText)
+	for _, pat := range crowdsecCmdInjPatterns {
+		if strings.Contains(lower, strings.ToLower(pat)) {
+			return true
+		}
+	}
+	return false
+}
+
+// CrowdSecMatchLog4Shell checks the request against JNDI/Log4Shell and SSTI patterns.
+func CrowdSecMatchLog4Shell(searchText string) bool {
+	lower := strings.ToLower(searchText)
+	for _, pat := range crowdsecLog4ShPatterns {
+		if strings.Contains(lower, strings.ToLower(pat)) {
+			return true
+		}
+	}
+	return false
+}
+
 // CrowdSecPatternCounts returns the number of loaded patterns for logging.
 func CrowdSecPatternCounts() map[string]int {
 	return map[string]int{
-		"bad_user_agents": len(crowdsecBadUAs),
-		"sqli_patterns":   len(crowdsecSQLiPatterns),
-		"xss_patterns":    len(crowdsecXSSPatterns),
-		"path_traversal":  len(crowdsecPathPatterns),
-		"backdoors":       len(crowdsecBackdoorPaths),
+		"bad_user_agents":    len(crowdsecBadUAs),
+		"sqli_patterns":      len(crowdsecSQLiPatterns),
+		"xss_patterns":       len(crowdsecXSSPatterns),
+		"path_traversal":     len(crowdsecPathPatterns),
+		"backdoors":          len(crowdsecBackdoorPaths),
+		"command_injection":  len(crowdsecCmdInjPatterns),
+		"log4shell_ssti":     len(crowdsecLog4ShPatterns),
 	}
 }

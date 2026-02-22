@@ -1,0 +1,95 @@
+# Command injection patterns (CrowdSec-style collection)
+# Shell command separators
+;ls
+;cat
+;id
+;whoami
+;uname
+;pwd
+;curl
+;wget
+;nc
+;bash
+;sh
+;cmd
+|ls
+|cat
+|id
+|whoami
+|uname
+|curl
+|wget
+|nc
+|bash
+|sh
+|cmd
+||ls
+||cat
+||id
+||whoami
+||uname
+||curl
+||wget
+# Backtick execution
+`id`
+`whoami`
+`uname`
+`cat
+`ls
+`curl
+`wget
+# $() subshell
+$(id)
+$(whoami)
+$(uname)
+$(cat
+$(ls
+$(curl
+$(wget
+# URL-encoded variants
+%3Bls
+%3Bcat
+%3Bid
+%3Bwhoami
+%7Cls
+%7Ccat
+%7Cid
+%7Cwhoami
+%60id%60
+%60whoami%60
+%24(id)
+%24(whoami)
+# Newline injection
+%0aid
+%0als
+%0acat
+%0d%0aid
+%0d%0als
+# PHP exec functions
+exec(
+system(
+passthru(
+popen(
+proc_open(
+shell_exec(
+pcntl_exec(
+# Python exec
+__import__('os')
+os.system(
+os.popen(
+subprocess.call(
+subprocess.Popen(
+subprocess.run(
+# Ruby exec
+Kernel.system(
+IO.popen(
+# Java exec
+Runtime.exec(
+ProcessBuilder
+# Node.js exec
+child_process
+require('child_process')
+# PowerShell
+powershell
+Invoke-Expression
+Invoke-WebRequest

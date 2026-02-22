@@ -432,8 +432,17 @@ func (h *Handler) logAndBroadcast(site *db.Site, rawForLog, rawRequest, sourceIP
 			"blocked":        blocked,
 			"classifier":     result.Classifier,
 			"attack_type":    result.AttackType,
+			"source_ip":      sourceIP,
 		})
 		h.hub.Publish(strconv.Itoa(site.ID), sse.Event{Type: "request", Data: eventData})
+
+		// Broadcast incremental stats update so dashboards update in real-time
+		statsData, _ := json.Marshal(map[string]any{
+			"type":        "stats_increment",
+			"blocked":     blocked,
+			"attack_type": result.AttackType,
+		})
+		h.hub.Publish(strconv.Itoa(site.ID), sse.Event{Type: "stats_increment", Data: statsData})
 	}
 }
 

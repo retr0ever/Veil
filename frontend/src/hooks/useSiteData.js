@@ -140,6 +140,25 @@ export function useSiteData(siteId) {
       } catch {}
     })
 
+    // Incremental stats updates — fired on every proxied request for real-time counters
+    es.addEventListener('stats_increment', (e) => {
+      if (cancelled) return
+      try {
+        const data = JSON.parse(e.data)
+        setStats((prev) => {
+          const total = prev.total_requests + 1
+          const blocked = prev.blocked_requests + (data.blocked ? 1 : 0)
+          const blockRate = total > 0 ? Math.round((blocked / total) * 1000) / 10 : 0
+          return {
+            ...prev,
+            total_requests: total,
+            blocked_requests: blocked,
+            block_rate: blockRate,
+          }
+        })
+      } catch {}
+    })
+
     es.addEventListener('finding', (e) => {
       if (cancelled) return
       try {

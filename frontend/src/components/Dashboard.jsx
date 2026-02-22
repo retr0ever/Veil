@@ -1260,7 +1260,6 @@ export function Dashboard({ site, activeSection = 'site', onSiteUpdate }) {
                 siteId={site.site_id}
                 findings={findings}
                 onFindingStatusChange={handleFindingStatusChange}
-                repoLinked={repoInfo?.linked === true}
               />
             )}
           </div>

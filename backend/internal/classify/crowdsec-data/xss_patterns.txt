@@ -13,7 +13,7 @@ prompt(
 <table
 <object
 <body
-<p 
+<p
 <meta
 <frameset
 %3Cimg
@@ -30,7 +30,62 @@ prompt%28
 %3Ctable
 %3Cobject
 %3Cbody
-%3Cp 
+%3Cp
 %3Cmeta
 %3Cframeset
 %3Csvg
+# Event handlers (CrowdSec http-xss collection)
+onerror=
+onload=
+onclick=
+onmouseover=
+onfocus=
+onblur=
+onsubmit=
+onchange=
+onkeyup=
+onkeydown=
+onkeypress=
+onmouseout=
+onmouseenter=
+ondblclick=
+oncontextmenu=
+ondrag=
+onanimationend=
+ontransitionend=
+onpointerover=
+onwheel=
+# DOM manipulation
+document.cookie
+document.write(
+document.location
+document.domain
+window.location
+innerHTML
+outerHTML
+eval(
+setTimeout(
+setInterval(
+Function(
+# Encoded XSS variants
+\x3cscript
+\u003cscript
+&#60;script
+&#x3c;script
+# Data URI XSS
+data:text/html
+data:text/javascript
+# Polyglot XSS markers
+fromCharCode
+String.fromCharCode
+atob(
+btoa(
+fetch(
+XMLHttpRequest
+# Less common XSS vectors
+<details open ontoggle=
+<marquee onstart=
+<video onloadstart=
+<audio onerror=
+<math><maction actiontype=
+<isindex action=

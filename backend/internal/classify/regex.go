@@ -75,6 +75,14 @@ func init() {
 				`(?i)('(\s|%20)*--|--\s*$|#\s*$)`,
 				`(?i)(\bhaving\b\s+\d+\s*=\s*\d+)`,
 				`(?i)(load_file|into\s+(out|dump)file|information_schema)`,
+				// Comment-obfuscated SQLi: union/**/select, etc.
+				`(?i)(union\s*/\*.*?\*/\s*select|select\s*/\*.*?\*/\s*from|insert\s*/\*.*?\*/\s*into)`,
+				// Hex-encoded comparisons: 0x31=0x31, AND 0x...
+				`(?i)(\b(and|or)\s+0x[0-9a-f]+=0x[0-9a-f]+)`,
+				// Inline comments used to break keywords: un/**/ion sel/**/ect
+				`(?i)(un/\*.*?\*/ion|sel/\*.*?\*/ect|ins/\*.*?\*/ert)`,
+				// Nested comment evasion
+				`(?i)(/\*!.*?(select|union|from|where|and|or)\b)`,
 			),
 		},
 		{
@@ -102,6 +110,10 @@ func init() {
 				`(?i)(/etc/(passwd|shadow|hosts|issue)|/proc/(self|version|cmdline))`,
 				`(?i)(\.\.;/|\.\.%00|%00\.)`,
 				`(?i)(c:\\\\windows|c:/windows|boot\.ini|win\.ini)`,
+				// Doubled-slash traversal: ....// or ....\\
+				`(\.{3,}[/\\])`,
+				// Null byte with extension: %00.jpg, %00.png (null byte truncation)
+				`(%00\.\w{2,4}\b)`,
 			),
 		},
 		{
@@ -167,6 +179,56 @@ func init() {
 				`(%25(?:2e|2f|5c|3c|3e|22|27))`,
 				`(?i)(\\u003c|\\u003e|\\x3c|\\x3e)`,
 				`(%00|%c0%ae)`,
+			),
+		},
+		{
+			Category:  "jndi_injection",
+			HumanName: "JNDI/Log4Shell injection",
+			BaseConf:  0.95,
+			Patterns: compile(
+				// All JNDI protocol variants: ldap, rmi, dns, iiop, corba, nds, http
+				`(?i)(\$\{jndi\s*:\s*(ldap|rmi|dns|iiop|corba|nds|http)s?\s*:)`,
+				// Obfuscated JNDI: ${${lower:j}ndi:, ${j${::-n}di:
+				`(?i)(\$\{[^}]*j[^}]*n[^}]*d[^}]*i\s*:)`,
+				// Log4j lookup patterns: ${env:, ${sys:, ${java:
+				`(?i)(\$\{(env|sys|java|lower|upper|base64)\s*:)`,
+			),
+		},
+		{
+			Category:  "ssti",
+			HumanName: "Server-side template injection",
+			BaseConf:  0.87,
+			Patterns: compile(
+				// Jinja2/Twig/Django: {{...}}, {%...%}
+				`(\{\{.*?(__|class|config|request|self|import|eval|exec|system|popen).*?\}\})`,
+				`(\{\{[^}]*\d+\s*[\*\+\-/]\s*\d+[^}]*\}\})`,
+				`(\{%.*?(import|include|extends|block|macro|call).*?%\})`,
+				// Ruby ERB: <%=...%>
+				`(<%=?\s*.*?(system|exec|eval|\x60).*?%>)`,
+				// Expression language: ${...} with code execution indicators
+				`(\$\{[^}]*(Runtime|ProcessBuilder|getClass|forName|newInstance)[^}]*\})`,
+				// FreeMarker: <#assign ...>
+				`(<#(assign|include|import)\b)`,
+			),
+		},
+		{
+			Category:  "nosqli",
+			HumanName: "NoSQL injection",
+			BaseConf:  0.88,
+			Patterns: compile(
+				// MongoDB operators in JSON: {"$gt":""}
+				`(?i)(\{[^}]*"\$(gt|gte|lt|lte|ne|eq|in|nin|or|and|not|regex|where|exists)"\s*:)`,
+				// MongoDB $where with JS: $where: function()
+				`(?i)(\$where\s*:\s*(function|this\.)|\bdb\.\w+\.(find|insert|update|delete|drop)\()`,
+			),
+		},
+		{
+			Category:  "prototype_pollution",
+			HumanName: "Prototype pollution",
+			BaseConf:  0.86,
+			Patterns: compile(
+				`(?i)(__proto__|constructor\s*\[\s*['"]prototype['"]\s*\]|Object\.assign\s*\()`,
+				`(?i)("__proto__"\s*:|'__proto__'\s*:)`,
 			),
 		},
 	}
@@ -278,6 +340,14 @@ func RegexClassify(raw string) *Result {
 		// CrowdSec known backdoor/webshell filenames (208 known paths)
 		if CrowdSecMatchBackdoor(raw) {
 			matches = append(matches, match{"backdoor", 0.93, 1, "Known webshell/backdoor path (CrowdSec)", false})
+		}
+		// CrowdSec command injection patterns
+		if CrowdSecMatchCmdInj(searchText) {
+			matches = append(matches, match{"command_injection", 0.89, 1, "Command injection probe (CrowdSec)", false})
+		}
+		// CrowdSec JNDI/Log4Shell + SSTI patterns
+		if CrowdSecMatchLog4Shell(searchText) {
+			matches = append(matches, match{"jndi_injection", 0.93, 1, "JNDI/Log4Shell or SSTI attack (CrowdSec)", false})
 		}
 	}
 

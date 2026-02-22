@@ -1131,6 +1131,43 @@ func (db *DB) GetAttackTrends(ctx context.Context, window time.Duration) ([]Atta
 	return trends, rows.Err()
 }
 
+// RegexBypassEntry represents a request that the LLM caught but regex missed.
+type RegexBypassEntry struct {
+	RawRequest string
+	AttackType string
+	Classifier string
+	Confidence float32
+}
+
+// GetRegexBypasses returns recent requests where the LLM classifier caught an
+// attack that the regex classifier missed (classifier != 'regex' AND blocked).
+func (db *DB) GetRegexBypasses(ctx context.Context, window time.Duration, limit int) ([]RegexBypassEntry, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT raw_request, attack_type, classifier, confidence
+		 FROM request_log
+		 WHERE classifier IN ('crusoe', 'claude')
+		   AND classification = 'MALICIOUS'
+		   AND blocked = true
+		   AND attack_type IS NOT NULL AND attack_type != 'none'
+		   AND timestamp > NOW() - $1::interval
+		 ORDER BY timestamp DESC
+		 LIMIT $2`,
+		fmt.Sprintf("%d seconds", int(window.Seconds())), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []RegexBypassEntry
+	for rows.Next() {
+		var e RegexBypassEntry
+		if err := rows.Scan(&e.RawRequest, &e.AttackType, &e.Classifier, &e.Confidence); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 // GetAllRuleVersions retrieves all rule versions, newest first.
 func (db *DB) GetAllRuleVersions(ctx context.Context) ([]Rules, error) {
 	if ctx == nil {

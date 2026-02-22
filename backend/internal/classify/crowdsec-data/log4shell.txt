@@ -1,0 +1,54 @@
+# Log4Shell / JNDI injection patterns
+${jndi:ldap://
+${jndi:ldaps://
+${jndi:rmi://
+${jndi:dns://
+${jndi:iiop://
+${jndi:corba://
+${jndi:nds://
+${jndi:http://
+${jndi:https://
+# Obfuscated JNDI variants
+${${lower:j}ndi:
+${${upper:j}ndi:
+${${lower:j}${lower:n}${lower:d}${lower:i}:
+${j${::-n}di:
+${jn${::-d}i:
+${jnd${::-i}:
+${${env:NaN:-j}ndi
+${${lower:jndi}:
+${j${env:NaN:-n}di:
+# Log4j lookup patterns
+${env:
+${sys:
+${java:
+${lower:
+${upper:
+${base64:
+${date:
+# URL-encoded JNDI
+%24%7Bjndi%3A
+%24%7Bjndi
+%24%7B%6a%6e%64%69
+$%7Bjndi:
+$%7bjndi:
+# SSTI / Template injection patterns
+{{7*7}}
+{{config
+{{self
+{{request
+{{dump(
+{%import
+{%include
+{%extends
+<%=system
+<%=exec
+<%=`
+${Runtime
+${ProcessBuilder
+${getClass
+<#assign
+<#include
+<#import
+#{7*7}
+*{7*7}

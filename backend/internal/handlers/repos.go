@@ -188,6 +188,7 @@ func (rh *RepoHandler) UpdateFinding(w http.ResponseWriter, r *http.Request) {
 }
 
 // TriggerScan handles POST /api/sites/{id}/scan — triggers an immediate code scan.
+// Works in two modes: with a linked GitHub repo (code scan) or without (traffic-based findings).
 func (rh *RepoHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	siteID, ok := rh.getSiteID(w, r)
 	if !ok {
@@ -205,38 +206,79 @@ func (rh *RepoHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	}
 	user := auth.GetUserFromCtx(r.Context())
 
-	siteRepo, err := rh.db.GetSiteRepo(r.Context(), siteID)
-	if err != nil || siteRepo == nil {
-		jsonError(w, "no repository linked to this site", http.StatusBadRequest)
-		return
-	}
-
 	// Get recent attack types for this site
 	attacks, err := rh.db.GetRecentAttackTypes(r.Context(), siteID, 24*time.Hour)
 	if err != nil || len(attacks) == 0 {
-		// Fall back to global threats
 		attacks = []db.AttackSummary{
 			{AttackType: "sqli", Payload: "' OR '1'='1", Reason: "SQL injection pattern"},
 			{AttackType: "xss", Payload: "<script>alert(1)</script>", Reason: "Cross-site scripting"},
 		}
 	}
 
+	// Check if a repo is linked — if so, do a full code scan
+	siteRepo, _ := rh.db.GetSiteRepo(r.Context(), siteID)
+	hasRepo := siteRepo != nil
+
 	totalFindings := 0
-	for _, attack := range attacks {
-		findings, err := rh.scanner.ScanAndAnalyze(r.Context(), siteID, user.ID,
-			attack.AttackType, attack.Payload, attack.Reason, nil)
-		if err != nil {
-			rh.logger.Warn("scan failed", "attack", attack.AttackType, "err", err)
-			continue
+	if hasRepo && rh.scanner != nil {
+		// Repo linked — scan source code for vulnerabilities matching traffic patterns
+		for _, attack := range attacks {
+			findings, err := rh.scanner.ScanAndAnalyze(r.Context(), siteID, user.ID,
+				attack.AttackType, attack.Payload, attack.Reason, nil)
+			if err != nil {
+				rh.logger.Warn("scan failed", "attack", attack.AttackType, "err", err)
+				continue
+			}
+			totalFindings += len(findings)
 		}
-		totalFindings += len(findings)
+	} else {
+		// No repo — generate traffic-based findings from blocked requests
+		for _, attack := range attacks {
+			// Create a traffic-based finding for each attack type seen
+			finding := &db.CodeFinding{
+				SiteID:      siteID,
+				FilePath:    "traffic:" + attack.AttackType,
+				FindingType: attack.AttackType,
+				Confidence:  0.85,
+				Description: "Detected " + attack.AttackType + " attack in traffic: " + attack.Reason,
+				Snippet:     attack.Payload,
+				SuggestedFix: getTrafficFix(attack.AttackType),
+				Status:      "open",
+			}
+			if err := rh.db.InsertCodeFinding(r.Context(), finding); err != nil {
+				rh.logger.Warn("failed to insert traffic finding", "err", err)
+				continue
+			}
+			totalFindings++
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"findings_count": totalFindings,
+		"findings_count":  totalFindings,
 		"attacks_scanned": len(attacks),
+		"mode":            map[bool]string{true: "code_scan", false: "traffic_analysis"}[hasRepo],
 	})
+}
+
+// getTrafficFix returns a remediation suggestion based on attack type.
+func getTrafficFix(attackType string) string {
+	fixes := map[string]string{
+		"sqli":                "Use parameterised queries / prepared statements. Never concatenate user input into SQL.",
+		"xss":                 "Sanitise and escape all user-supplied input before rendering. Use Content-Security-Policy headers.",
+		"path_traversal":      "Validate and canonicalise file paths. Reject input containing '../' or null bytes.",
+		"command_injection":   "Avoid passing user input to shell commands. Use allowlists and language-native APIs instead.",
+		"ssrf":                "Validate and allowlist URLs. Block requests to internal IPs and metadata endpoints.",
+		"xxe":                 "Disable external entity processing in XML parsers. Use JSON where possible.",
+		"jndi_injection":      "Upgrade Log4j to 2.17.1+. Set -Dlog4j2.formatMsgNoLookups=true.",
+		"ssti":                "Never render user input inside templates. Use sandboxed template engines.",
+		"nosqli":              "Validate query input types. Reject objects where strings are expected.",
+		"prototype_pollution": "Freeze Object.prototype. Validate JSON keys and reject __proto__.",
+	}
+	if fix, ok := fixes[attackType]; ok {
+		return fix
+	}
+	return "Review and sanitise all user-supplied input at the application boundary."
 }
 
 // GetLinkedRepo handles GET /api/sites/{id}/repo — returns the linked repo info.

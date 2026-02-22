@@ -31,3 +31,57 @@ C:/inetpub/wwwroot/global.asa
 C:\inetpub\wwwroot\global.asa
 C:/boot.ini
 C:\boot.ini
+# Additional traversal evasion patterns
+..;/
+..%00
+%00.
+....//
+....\\
+..%5c
+%2e%2e%5c
+%c0%ae%c0%ae
+%e0%40%ae%e0%40%ae
+# Null byte truncation
+%00.jpg
+%00.png
+%00.gif
+%00.html
+%00.txt
+# More sensitive files (CrowdSec lfi collection)
+/etc/resolv.conf
+/etc/motd
+/etc/crontab
+/etc/mysql/my.cnf
+/etc/apache2/apache2.conf
+/etc/nginx/nginx.conf
+/etc/httpd/conf/httpd.conf
+/etc/ssh/sshd_config
+/root/.bash_history
+/root/.ssh/id_rsa
+/root/.ssh/authorized_keys
+/home/.ssh/id_rsa
+~/.ssh/id_rsa
+# Cloud metadata
+/.aws/credentials
+/.aws/config
+/.env
+/.env.local
+/.env.production
+/.docker/config.json
+/.kube/config
+# Proc filesystem
+/proc/version
+/proc/cmdline
+/proc/self/environ
+/proc/self/fd/
+/proc/net/tcp
+/proc/net/arp
+# Java/Tomcat specific
+WEB-INF/web.xml
+WEB-INF/classes
+META-INF/
+# Wrapper protocols
+php://filter
+php://input
+phar://
+jar://

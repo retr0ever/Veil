@@ -16,3 +16,70 @@ sleep%28
 upper%28
 hex%28
 md5%28
+# Comment-obfuscated SQLi (CrowdSec http-sqli-probing-bf collection)
+union/**/select
+union/**/all/**/select
+select/**/from
+insert/**/into
+/**/or/**/
+/**/and/**/
+# Hex-encoded comparisons
+0x31=0x31
+0x313d3031
+0x61646d696e
+# MySQL specific
+@@datadir
+@@basedir
+@@hostname
+group_concat(
+concat_ws(
+extractvalue(
+updatexml(
+# PostgreSQL specific
+pg_catalog
+pg_user
+current_database(
+# MSSQL specific
+xp_cmdshell
+sp_executesql
+master..sysdatabases
+OPENROWSET
+# Error-based SQLi
+convert(int,
+cast(
+extractvalue(
+# Time-based SQLi variants
+waitfor delay
+benchmark(10000000
+pg_sleep(5)
+sleep(5)
+# Stacked queries
+;select
+;insert
+;update
+;delete
+;drop
+# NoSQL injection patterns (MongoDB)
+$where
+$regex
+$ne
+$gt
+$in
+$or
+$and
+$not
+$exists
+# Boolean-based blind
+' and '1'='1
+' and '1'='2
+' or 'a'='a
+" or "a"="a
+1 and 1=1
+1 and 1=2
+# LIKE-based injection
+' like '
+%25' like '%25
+# Order by enumeration
+order by 1--
+order by 100--
+group by 1--
