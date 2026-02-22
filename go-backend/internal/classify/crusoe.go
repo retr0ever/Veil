@@ -18,12 +18,12 @@ var crusoeClient = &http.Client{Timeout: 15 * time.Second}
 func CrusoeClassify(ctx context.Context, raw, systemPrompt string) *Result {
 	apiURL := os.Getenv("CRUSOE_API_URL")
 	if apiURL == "" {
-		apiURL = "https://inference.crusoe.ai/v1"
+		apiURL = "https://hackeurope.crusoecloud.com/v1"
 	}
 	apiKey := os.Getenv("CRUSOE_API_KEY")
 	model := os.Getenv("CRUSOE_MODEL")
 	if model == "" {
-		model = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+		model = "NVFP4/Qwen3-235B-A22B-Instruct-2507-FP4"
 	}
 
 	if apiKey == "" || apiKey == "placeholder" {
