@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { LandingPage } from './pages/LandingPage'
 import { DemoPage } from './pages/DemoPage'
 import { AuthPage } from './pages/AuthPage'
@@ -57,6 +58,23 @@ function App() {
   const { user, loading: authLoading } = useAuth()
   const pathname = normalizePath(window.location.pathname)
   const projectId = getProjectId(pathname)
+  const shouldScaleUi = PUBLIC_ROUTES.includes(pathname)
+
+  useEffect(() => {
+    const html = document.documentElement
+    const root = document.getElementById('root')
+    if (shouldScaleUi) {
+      html.classList.add('route-scale-75')
+      html.classList.remove('route-scale-100')
+      root?.classList.add('route-scale-75')
+      root?.classList.remove('route-scale-100')
+      return
+    }
+    html.classList.remove('route-scale-75')
+    html.classList.add('route-scale-100')
+    root?.classList.remove('route-scale-75')
+    root?.classList.add('route-scale-100')
+  }, [shouldScaleUi])
 
   // OAuth callback -- let it pass through to the backend
   if (pathname.startsWith('/auth/github')) return null
