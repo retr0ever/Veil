@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# dev.sh — start Postgres, Go backend, and frontend for local development
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+cleanup() {
+  echo ""
+  echo "Shutting down..."
+  kill 0 2>/dev/null
+  wait 2>/dev/null
+}
+trap cleanup EXIT INT TERM
+
+# ── Postgres ────────────────────────────────────────────────────────
+if docker ps --format '{{.Names}}' | grep -q '^veil-db$'; then
+  echo "[db] Postgres already running"
+elif docker ps -a --format '{{.Names}}' | grep -q '^veil-db$'; then
+  echo "[db] Starting existing veil-db container"
+  docker start veil-db
+else
+  echo "[db] Creating Postgres container"
+  docker run -d --name veil-db \
+    -e POSTGRES_DB=veil \
+    -e POSTGRES_USER=veil \
+    -e POSTGRES_PASSWORD=veil \
+    -p 5432:5432 \
+    postgres:16-alpine
+fi
+
+# Wait for Postgres to be ready
+echo "[db] Waiting for Postgres..."
+for i in $(seq 1 30); do
+  if docker exec veil-db pg_isready -U veil -q 2>/dev/null; then
+    echo "[db] Postgres ready"
+    break
+  fi
+  sleep 1
+done
+
+# ── Go backend ──────────────────────────────────────────────────────
+echo "[go] Starting Go backend on http://localhost:8080"
+(
+  cd "$ROOT/go-backend"
+  export DATABASE_URL="postgres://veil:veil@localhost:5432/veil?sslmode=disable"
+  # Load .env from project root if it exists (for GitHub OAuth, etc.)
+  if [ -f "$ROOT/.env" ]; then
+    set -a
+    source "$ROOT/.env"
+    set +a
+  fi
+  go run ./cmd/server/main.go
+) &
+
+# ── Frontend ────────────────────────────────────────────────────────
+echo "[ui] Starting frontend on http://localhost:5173"
+(
+  cd "$ROOT/frontend"
+  npm run dev
+) &
+
+# Wait a moment then show status
+sleep 3
+echo ""
+echo "============================================"
+echo "  Veil dev environment running"
+echo "  Backend:  http://localhost:8080"
+echo "  Frontend: http://localhost:5173"
+echo "  Postgres: localhost:5432"
+echo "  Health:   curl http://localhost:8080/ping"
+echo "============================================"
+echo ""
+
+wait
