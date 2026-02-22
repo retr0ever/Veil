@@ -1,0 +1,847 @@
+package db
+
+import (
+	"context"
+	"embed"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// ErrNotFound is returned when a queried entity does not exist.
+var ErrNotFound = errors.New("not found")
+
+//go:embed migrations/*.sql
+var migrations embed.FS
+
+// DB wraps a pgx connection pool and provides CRUD methods for the Veil WAF.
+type DB struct {
+	Pool   *pgxpool.Pool
+	logger *slog.Logger
+}
+
+// Connect creates a new DB instance, connects to PostgreSQL, and runs migrations.
+func Connect(ctx context.Context, logger *slog.Logger) (*DB, error) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://veil:veil@localhost:5432/veil?sslmode=disable"
+	}
+
+	config, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parse dsn: %w", err)
+	}
+	config.MaxConns = 20
+	config.MinConns = 2
+	config.MaxConnLifetime = 30 * time.Minute
+	config.MaxConnIdleTime = 5 * time.Minute
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("connect: %w", err)
+	}
+
+	if err := pool.Ping(ctx); err != nil {
+		return nil, fmt.Errorf("ping: %w", err)
+	}
+
+	db := &DB{Pool: pool, logger: logger}
+	if err := db.Migrate(ctx); err != nil {
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+
+	return db, nil
+}
+
+// Migrate reads and executes the embedded SQL migration files.
+func (db *DB) Migrate(ctx context.Context) error {
+	sql, err := migrations.ReadFile("migrations/001_init.sql")
+	if err != nil {
+		return fmt.Errorf("read migration: %w", err)
+	}
+	if _, err := db.Pool.Exec(ctx, string(sql)); err != nil {
+		return fmt.Errorf("exec migration: %w", err)
+	}
+	db.logger.Info("database migrated")
+
+	if err := db.EnsureCurrentAndNextPartitions(ctx); err != nil {
+		return fmt.Errorf("ensure partitions: %w", err)
+	}
+
+	return nil
+}
+
+// Close shuts down the connection pool.
+func (db *DB) Close() {
+	db.Pool.Close()
+}
+
+// PingContext checks the database connection.
+func (db *DB) PingContext(ctx context.Context) error {
+	return db.Pool.Ping(ctx)
+}
+
+// ---------------------------------------------------------------------------
+// Sessions
+// ---------------------------------------------------------------------------
+
+// CreateSession inserts a new session and returns its UUID.
+func (db *DB) CreateSession(ctx context.Context, userID int, ip, ua string) (string, error) {
+	var id string
+	err := db.Pool.QueryRow(ctx,
+		`INSERT INTO sessions (user_id, ip_address, user_agent) VALUES ($1, $2::inet, $3) RETURNING id`,
+		userID, ip, ua).Scan(&id)
+	return id, err
+}
+
+// GetSession retrieves a session by its UUID.
+func (db *DB) GetSession(ctx context.Context, sessionID string) (*Session, error) {
+	var s Session
+	var ipAddr *string
+	var userAgent *string
+	err := db.Pool.QueryRow(ctx,
+		`SELECT id, user_id, created_at, expires_at, ip_address, user_agent
+		 FROM sessions WHERE id = $1`,
+		sessionID).Scan(&s.ID, &s.UserID, &s.CreatedAt, &s.ExpiresAt, &ipAddr, &userAgent)
+	if err != nil {
+		return nil, err
+	}
+	if ipAddr != nil {
+		s.IPAddress = *ipAddr
+	}
+	if userAgent != nil {
+		s.UserAgent = *userAgent
+	}
+	return &s, nil
+}
+
+// DeleteSession removes a session by its UUID.
+func (db *DB) DeleteSession(ctx context.Context, sessionID string) error {
+	_, err := db.Pool.Exec(ctx, `DELETE FROM sessions WHERE id = $1`, sessionID)
+	return err
+}
+
+// CleanExpiredSessions removes all sessions past their expiry time.
+func (db *DB) CleanExpiredSessions(ctx context.Context) (int64, error) {
+	tag, err := db.Pool.Exec(ctx, `DELETE FROM sessions WHERE expires_at < NOW()`)
+	return tag.RowsAffected(), err
+}
+
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
+// UpsertUser inserts or updates a user based on their GitHub ID.
+func (db *DB) UpsertUser(ctx context.Context, u *User) (int, error) {
+	var id int
+	err := db.Pool.QueryRow(ctx,
+		`INSERT INTO users (github_id, github_login, avatar_url, name)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (github_id) DO UPDATE SET
+		    github_login = EXCLUDED.github_login,
+		    avatar_url = EXCLUDED.avatar_url,
+		    name = EXCLUDED.name
+		 RETURNING id`,
+		u.GitHubID, u.GitHubLogin, u.AvatarURL, u.Name).Scan(&id)
+	return id, err
+}
+
+// GetUserByID retrieves a user by their primary key.
+func (db *DB) GetUserByID(ctx context.Context, id int) (*User, error) {
+	var u User
+	var avatarURL, name *string
+	err := db.Pool.QueryRow(ctx,
+		`SELECT id, github_id, github_login, avatar_url, name, created_at
+		 FROM users WHERE id = $1`,
+		id).Scan(&u.ID, &u.GitHubID, &u.GitHubLogin, &avatarURL, &name, &u.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if avatarURL != nil {
+		u.AvatarURL = *avatarURL
+	}
+	if name != nil {
+		u.Name = *name
+	}
+	return &u, nil
+}
+
+// ---------------------------------------------------------------------------
+// Sites
+// ---------------------------------------------------------------------------
+
+// CreateSite inserts a new site and populates its ID and CreatedAt.
+func (db *DB) CreateSite(ctx context.Context, s *Site) error {
+	return db.Pool.QueryRow(ctx,
+		`INSERT INTO sites (user_id, domain, project_name, upstream_ip, original_cname, status)
+		 VALUES ($1, $2, $3, $4::inet, $5, $6) RETURNING id, created_at`,
+		s.UserID, s.Domain, s.ProjectName, s.UpstreamIP, s.OriginalCNAME, s.Status,
+	).Scan(&s.ID, &s.CreatedAt)
+}
+
+// GetSiteByDomain retrieves a site by its domain name.
+func (db *DB) GetSiteByDomain(ctx context.Context, domain string) (*Site, error) {
+	var s Site
+	var projectName, originalCNAME *string
+	err := db.Pool.QueryRow(ctx,
+		`SELECT id, user_id, domain, project_name, upstream_ip, original_cname, status, verified_at, created_at
+		 FROM sites WHERE domain = $1`, domain,
+	).Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if projectName != nil {
+		s.ProjectName = *projectName
+	}
+	if originalCNAME != nil {
+		s.OriginalCNAME = *originalCNAME
+	}
+	return &s, nil
+}
+
+// GetSiteByID retrieves a site by its primary key.
+func (db *DB) GetSiteByID(ctx context.Context, id int) (*Site, error) {
+	var s Site
+	var projectName, originalCNAME *string
+	err := db.Pool.QueryRow(ctx,
+		`SELECT id, user_id, domain, project_name, upstream_ip, original_cname, status, verified_at, created_at
+		 FROM sites WHERE id = $1`, id,
+	).Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if projectName != nil {
+		s.ProjectName = *projectName
+	}
+	if originalCNAME != nil {
+		s.OriginalCNAME = *originalCNAME
+	}
+	return &s, nil
+}
+
+// GetSitesByUser retrieves all sites belonging to a user, ordered by creation time (newest first).
+func (db *DB) GetSitesByUser(ctx context.Context, userID int) ([]Site, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT id, user_id, domain, project_name, upstream_ip, original_cname, status, verified_at, created_at
+		 FROM sites WHERE user_id = $1 ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sites []Site
+	for rows.Next() {
+		var s Site
+		var projectName, originalCNAME *string
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		if projectName != nil {
+			s.ProjectName = *projectName
+		}
+		if originalCNAME != nil {
+			s.OriginalCNAME = *originalCNAME
+		}
+		sites = append(sites, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return sites, nil
+}
+
+// GetUnverifiedSites retrieves all sites with status 'pending' or 'verifying'.
+func (db *DB) GetUnverifiedSites(ctx context.Context) ([]Site, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT id, user_id, domain, project_name, upstream_ip, original_cname, status, verified_at, created_at
+		 FROM sites WHERE status IN ('pending', 'verifying') ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sites []Site
+	for rows.Next() {
+		var s Site
+		var projectName, originalCNAME *string
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Domain, &projectName, &s.UpstreamIP, &originalCNAME, &s.Status, &s.VerifiedAt, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		if projectName != nil {
+			s.ProjectName = *projectName
+		}
+		if originalCNAME != nil {
+			s.OriginalCNAME = *originalCNAME
+		}
+		sites = append(sites, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return sites, nil
+}
+
+// UpdateSiteStatus changes a site's status.
+func (db *DB) UpdateSiteStatus(ctx context.Context, siteID int, status string) error {
+	_, err := db.Pool.Exec(ctx, `UPDATE sites SET status = $1 WHERE id = $2`, status, siteID)
+	return err
+}
+
+// DeleteSite removes a site, verifying ownership.
+func (db *DB) DeleteSite(ctx context.Context, siteID, userID int) error {
+	tag, err := db.Pool.Exec(ctx, `DELETE FROM sites WHERE id = $1 AND user_id = $2`, siteID, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UserOwnsSite checks whether the given user owns the given site.
+func (db *DB) UserOwnsSite(ctx context.Context, userID int, siteID int) (bool, error) {
+	var exists bool
+	err := db.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM sites WHERE id = $1 AND user_id = $2)`, siteID, userID).Scan(&exists)
+	return exists, err
+}
+
+// ---------------------------------------------------------------------------
+// Request log
+// ---------------------------------------------------------------------------
+
+// InsertRequestLog inserts a new request log entry.
+func (db *DB) InsertRequestLog(ctx context.Context, r *RequestLogEntry) error {
+	_, err := db.Pool.Exec(ctx,
+		`INSERT INTO request_log (site_id, raw_request, classification, confidence, classifier, blocked, attack_type, response_time_ms, source_ip)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::inet)`,
+		r.SiteID, r.RawRequest, r.Classification, r.Confidence, r.Classifier, r.Blocked, r.AttackType, r.ResponseTimeMs, r.SourceIP)
+	return err
+}
+
+// GetRecentRequests retrieves the most recent request log entries for a site.
+func (db *DB) GetRecentRequests(ctx context.Context, siteID int, limit int) ([]RequestLogEntry, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT id, site_id, timestamp, raw_request, classification, confidence, classifier, blocked, attack_type, response_time_ms, source_ip
+		 FROM request_log WHERE site_id = $1 ORDER BY timestamp DESC LIMIT $2`, siteID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []RequestLogEntry
+	for rows.Next() {
+		var e RequestLogEntry
+		var attackType, sourceIP *string
+		var confidence, responseTimeMs *float32
+		if err := rows.Scan(&e.ID, &e.SiteID, &e.Timestamp, &e.RawRequest, &e.Classification, &confidence, &e.Classifier, &e.Blocked, &attackType, &responseTimeMs, &sourceIP); err != nil {
+			return nil, err
+		}
+		if attackType != nil {
+			e.AttackType = *attackType
+		}
+		if sourceIP != nil {
+			e.SourceIP = *sourceIP
+		}
+		if confidence != nil {
+			e.Confidence = *confidence
+		}
+		if responseTimeMs != nil {
+			e.ResponseTimeMs = *responseTimeMs
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// ---------------------------------------------------------------------------
+// Agent log
+// ---------------------------------------------------------------------------
+
+// InsertAgentLog inserts a new agent log entry.
+func (db *DB) InsertAgentLog(ctx context.Context, a *AgentLogEntry) error {
+	_, err := db.Pool.Exec(ctx,
+		`INSERT INTO agent_log (site_id, agent, action, detail, success) VALUES ($1, $2, $3, $4, $5)`,
+		a.SiteID, a.Agent, a.Action, a.Detail, a.Success)
+	return err
+}
+
+// GetRecentAgentLogs retrieves the most recent agent log entries for a site.
+func (db *DB) GetRecentAgentLogs(ctx context.Context, siteID int, limit int) ([]AgentLogEntry, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT id, site_id, timestamp, agent, action, detail, success
+		 FROM agent_log WHERE site_id = $1 ORDER BY timestamp DESC LIMIT $2`, siteID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []AgentLogEntry
+	for rows.Next() {
+		var e AgentLogEntry
+		var detail *string
+		if err := rows.Scan(&e.ID, &e.SiteID, &e.Timestamp, &e.Agent, &e.Action, &detail, &e.Success); err != nil {
+			return nil, err
+		}
+		if detail != nil {
+			e.Detail = *detail
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// ---------------------------------------------------------------------------
+// Rules
+// ---------------------------------------------------------------------------
+
+// GetCurrentRules retrieves the latest rule version for a site.
+func (db *DB) GetCurrentRules(ctx context.Context, siteID int) (*Rules, error) {
+	var r Rules
+	err := db.Pool.QueryRow(ctx,
+		`SELECT id, site_id, version, crusoe_prompt, claude_prompt, updated_at, updated_by
+		 FROM rules WHERE site_id = $1 ORDER BY version DESC LIMIT 1`, siteID,
+	).Scan(&r.ID, &r.SiteID, &r.Version, &r.CrusoePrompt, &r.ClaudePrompt, &r.UpdatedAt, &r.UpdatedBy)
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// InsertRules inserts a new rule version for a site.
+func (db *DB) InsertRules(ctx context.Context, r *Rules) error {
+	_, err := db.Pool.Exec(ctx,
+		`INSERT INTO rules (site_id, version, crusoe_prompt, claude_prompt, updated_by)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		r.SiteID, r.Version, r.CrusoePrompt, r.ClaudePrompt, r.UpdatedBy)
+	return err
+}
+
+// ---------------------------------------------------------------------------
+// Threats
+// ---------------------------------------------------------------------------
+
+// InsertThreat inserts a new threat record.
+func (db *DB) InsertThreat(ctx context.Context, t *Threat) error {
+	_, err := db.Pool.Exec(ctx,
+		`INSERT INTO threats (site_id, technique_name, category, source, raw_payload, severity, blocked)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		t.SiteID, t.TechniqueName, t.Category, t.Source, t.RawPayload, t.Severity, t.Blocked)
+	return err
+}
+
+// GetThreats retrieves all threats for a site, ordered by discovery time (newest first).
+func (db *DB) GetThreats(ctx context.Context, siteID int) ([]Threat, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT id, site_id, technique_name, category, source, raw_payload, severity, discovered_at, tested_at, blocked, patched_at
+		 FROM threats WHERE site_id = $1 ORDER BY discovered_at DESC`, siteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var threats []Threat
+	for rows.Next() {
+		var t Threat
+		var source *string
+		if err := rows.Scan(&t.ID, &t.SiteID, &t.TechniqueName, &t.Category, &source, &t.RawPayload, &t.Severity, &t.DiscoveredAt, &t.TestedAt, &t.Blocked, &t.PatchedAt); err != nil {
+			return nil, err
+		}
+		if source != nil {
+			t.Source = *source
+		}
+		threats = append(threats, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return threats, nil
+}
+
+// GetThreatDistribution returns threat counts grouped by category.
+func (db *DB) GetThreatDistribution(ctx context.Context) ([]ThreatCategory, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT category, COUNT(*) as count FROM threats GROUP BY category ORDER BY count DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var cats []ThreatCategory
+	for rows.Next() {
+		var c ThreatCategory
+		if err := rows.Scan(&c.Category, &c.Count); err != nil {
+			return nil, err
+		}
+		cats = append(cats, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return cats, nil
+}
+
+// ---------------------------------------------------------------------------
+// Stats
+// ---------------------------------------------------------------------------
+
+// GetSiteStats returns aggregate stats for a site.
+func (db *DB) GetSiteStats(ctx context.Context, siteID int) (*Stats, error) {
+	var s Stats
+	err := db.Pool.QueryRow(ctx,
+		`SELECT
+		    COUNT(*),
+		    COUNT(*) FILTER (WHERE blocked),
+		    COALESCE((SELECT COUNT(*) FROM threats WHERE site_id = $1), 0),
+		    COALESCE(AVG(response_time_ms), 0)
+		 FROM request_log WHERE site_id = $1`, siteID,
+	).Scan(&s.TotalRequests, &s.BlockedCount, &s.ThreatCount, &s.AvgResponseMs)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// GetComplianceReport returns a summary compliance report across all sites.
+func (db *DB) GetComplianceReport(ctx context.Context) (*ComplianceReport, error) {
+	var r ComplianceReport
+	err := db.Pool.QueryRow(ctx,
+		`SELECT
+		    (SELECT COUNT(*) FROM sites),
+		    (SELECT COUNT(*) FROM sites WHERE status IN ('active','live')),
+		    (SELECT COUNT(*) FROM threats),
+		    (SELECT COUNT(*) FROM threats WHERE blocked),
+		    COALESCE((SELECT AVG(confidence) FROM request_log WHERE confidence IS NOT NULL), 0)`,
+	).Scan(&r.TotalSites, &r.ActiveSites, &r.TotalThreats, &r.BlockedThreats, &r.AvgConfidence)
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// ---------------------------------------------------------------------------
+// Threat intelligence
+// ---------------------------------------------------------------------------
+
+// LookupThreatIP checks if an IP is in the threat intelligence feed.
+func (db *DB) LookupThreatIP(ctx context.Context, ip string) (*ThreatIPResult, error) {
+	var r ThreatIPResult
+	err := db.Pool.QueryRow(ctx,
+		`SELECT ip, tier FROM threat_ips WHERE ip >>= $1::inet ORDER BY
+		    CASE tier WHEN 'ban' THEN 0 WHEN 'block' THEN 1 ELSE 2 END
+		 LIMIT 1`, ip,
+	).Scan(&r.IP, &r.Tier)
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// BulkInsertThreatIPs inserts multiple threat IP entries in a transaction.
+func (db *DB) BulkInsertThreatIPs(ctx context.Context, entries []ThreatIPEntry) error {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	for _, e := range entries {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO threat_ips (ip, tier, source) VALUES ($1::inet, $2, $3)
+			 ON CONFLICT DO NOTHING`,
+			e.IP, e.Tier, e.Source)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// ClearThreatIPsBySource removes all threat IPs from a given source.
+func (db *DB) ClearThreatIPsBySource(ctx context.Context, source string) error {
+	_, err := db.Pool.Exec(ctx, `DELETE FROM threat_ips WHERE source = $1`, source)
+	return err
+}
+
+// ---------------------------------------------------------------------------
+// GitHub repos
+// ---------------------------------------------------------------------------
+
+// StoreGitHubToken stores or updates a user's encrypted GitHub token.
+func (db *DB) StoreGitHubToken(ctx context.Context, userID int, encToken, scopes string) error {
+	_, err := db.Pool.Exec(ctx,
+		`INSERT INTO github_tokens (user_id, encrypted_token, scopes)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (user_id) DO UPDATE SET encrypted_token = $2, scopes = $3, updated_at = NOW()`,
+		userID, encToken, scopes)
+	return err
+}
+
+// GetGitHubToken retrieves the encrypted token for a user.
+func (db *DB) GetGitHubToken(ctx context.Context, userID int) (string, error) {
+	var token string
+	err := db.Pool.QueryRow(ctx,
+		`SELECT encrypted_token FROM github_tokens WHERE user_id = $1`, userID).Scan(&token)
+	return token, err
+}
+
+// LinkRepo connects a site to a GitHub repository.
+func (db *DB) LinkRepo(ctx context.Context, siteID int, owner, name, branch string) error {
+	_, err := db.Pool.Exec(ctx,
+		`INSERT INTO site_repos (site_id, repo_owner, repo_name, default_branch)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (site_id) DO UPDATE SET repo_owner = $2, repo_name = $3, default_branch = $4, connected_at = NOW()`,
+		siteID, owner, name, branch)
+	return err
+}
+
+// GetSiteRepo retrieves the GitHub repo linked to a site.
+func (db *DB) GetSiteRepo(ctx context.Context, siteID int) (*SiteRepo, error) {
+	var r SiteRepo
+	err := db.Pool.QueryRow(ctx,
+		`SELECT site_id, repo_owner, repo_name, default_branch, connected_at
+		 FROM site_repos WHERE site_id = $1`, siteID,
+	).Scan(&r.SiteID, &r.RepoOwner, &r.RepoName, &r.DefaultBranch, &r.ConnectedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// UnlinkRepo disconnects a site from its GitHub repository.
+func (db *DB) UnlinkRepo(ctx context.Context, siteID int) error {
+	_, err := db.Pool.Exec(ctx, `DELETE FROM site_repos WHERE site_id = $1`, siteID)
+	return err
+}
+
+// InsertCodeFinding inserts a new code finding for a site.
+func (db *DB) InsertCodeFinding(ctx context.Context, f *CodeFinding) error {
+	_, err := db.Pool.Exec(ctx,
+		`INSERT INTO code_findings (site_id, threat_id, file_path, line_start, line_end, snippet, finding_type, confidence, description, suggested_fix)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		f.SiteID, f.ThreatID, f.FilePath, f.LineStart, f.LineEnd, f.Snippet, f.FindingType, f.Confidence, f.Description, f.SuggestedFix)
+	return err
+}
+
+// GetCodeFindings retrieves all code findings for a site, newest first.
+func (db *DB) GetCodeFindings(ctx context.Context, siteID int) ([]CodeFinding, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT id, site_id, threat_id, file_path, line_start, line_end, snippet, finding_type, confidence, description, suggested_fix, status, created_at
+		 FROM code_findings WHERE site_id = $1 ORDER BY created_at DESC`, siteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var findings []CodeFinding
+	for rows.Next() {
+		var f CodeFinding
+		var snippet, suggestedFix *string
+		if err := rows.Scan(&f.ID, &f.SiteID, &f.ThreatID, &f.FilePath, &f.LineStart, &f.LineEnd, &snippet, &f.FindingType, &f.Confidence, &f.Description, &suggestedFix, &f.Status, &f.CreatedAt); err != nil {
+			return nil, err
+		}
+		if snippet != nil {
+			f.Snippet = *snippet
+		}
+		if suggestedFix != nil {
+			f.SuggestedFix = *suggestedFix
+		}
+		findings = append(findings, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return findings, nil
+}
+
+// UpdateCodeFindingStatus changes the status of a code finding.
+func (db *DB) UpdateCodeFindingStatus(ctx context.Context, findingID int64, status string) error {
+	_, err := db.Pool.Exec(ctx, `UPDATE code_findings SET status = $1 WHERE id = $2`, status, findingID)
+	return err
+}
+
+// ---------------------------------------------------------------------------
+// Partition management
+// ---------------------------------------------------------------------------
+
+// EnsurePartition creates a monthly partition for the request_log table if it
+// does not already exist.
+func (db *DB) EnsurePartition(ctx context.Context, t time.Time) error {
+	year, month, _ := t.Date()
+	name := fmt.Sprintf("request_log_%d_%02d", year, month)
+	start := time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, 0)
+	quotedName := pgx.Identifier{name}.Sanitize()
+	sql := fmt.Sprintf(
+		`CREATE TABLE IF NOT EXISTS %s PARTITION OF request_log FOR VALUES FROM ('%s') TO ('%s')`,
+		quotedName, start.Format("2006-01-02"), end.Format("2006-01-02"),
+	)
+	_, err := db.Pool.Exec(ctx, sql)
+	if err != nil {
+		return fmt.Errorf("create partition %s: %w", name, err)
+	}
+	db.logger.Info("partition ensured", "table", name)
+	return nil
+}
+
+// EnsureCurrentAndNextPartitions creates partitions for the current and next month.
+func (db *DB) EnsureCurrentAndNextPartitions(ctx context.Context) error {
+	now := time.Now().UTC()
+	if err := db.EnsurePartition(ctx, now); err != nil {
+		return err
+	}
+	return db.EnsurePartition(ctx, now.AddDate(0, 1, 0))
+}
+
+// ---------------------------------------------------------------------------
+// Global queries (cross-site, for frontend compatibility)
+// ---------------------------------------------------------------------------
+
+// GetGlobalStats returns aggregate stats across all sites.
+func (db *DB) GetGlobalStats(ctx context.Context) (*Stats, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var s Stats
+	err := db.Pool.QueryRow(ctx,
+		`SELECT
+		    COUNT(*),
+		    COUNT(*) FILTER (WHERE blocked),
+		    COALESCE((SELECT COUNT(*) FROM threats), 0),
+		    COALESCE(AVG(response_time_ms), 0)
+		 FROM request_log`,
+	).Scan(&s.TotalRequests, &s.BlockedCount, &s.ThreatCount, &s.AvgResponseMs)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// GetGlobalRecentRequests retrieves the most recent request log entries across all sites.
+func (db *DB) GetGlobalRecentRequests(ctx context.Context, limit int) ([]RequestLogEntry, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := db.Pool.Query(ctx,
+		`SELECT id, site_id, timestamp, raw_request, classification, confidence, classifier, blocked, attack_type, response_time_ms, source_ip
+		 FROM request_log ORDER BY timestamp DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []RequestLogEntry
+	for rows.Next() {
+		var e RequestLogEntry
+		var attackType, sourceIP *string
+		var confidence, responseTimeMs *float32
+		if err := rows.Scan(&e.ID, &e.SiteID, &e.Timestamp, &e.RawRequest, &e.Classification, &confidence, &e.Classifier, &e.Blocked, &attackType, &responseTimeMs, &sourceIP); err != nil {
+			return nil, err
+		}
+		if attackType != nil {
+			e.AttackType = *attackType
+		}
+		if sourceIP != nil {
+			e.SourceIP = *sourceIP
+		}
+		if confidence != nil {
+			e.Confidence = *confidence
+		}
+		if responseTimeMs != nil {
+			e.ResponseTimeMs = *responseTimeMs
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// GetGlobalRecentAgentLogs retrieves the most recent agent log entries across all sites.
+func (db *DB) GetGlobalRecentAgentLogs(ctx context.Context, limit int) ([]AgentLogEntry, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := db.Pool.Query(ctx,
+		`SELECT id, site_id, timestamp, agent, action, detail, success
+		 FROM agent_log ORDER BY timestamp DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []AgentLogEntry
+	for rows.Next() {
+		var e AgentLogEntry
+		var detail *string
+		if err := rows.Scan(&e.ID, &e.SiteID, &e.Timestamp, &e.Agent, &e.Action, &detail, &e.Success); err != nil {
+			return nil, err
+		}
+		if detail != nil {
+			e.Detail = *detail
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// GetGlobalThreats retrieves all threats across all sites.
+func (db *DB) GetGlobalThreats(ctx context.Context) ([]Threat, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := db.Pool.Query(ctx,
+		`SELECT id, site_id, technique_name, category, source, raw_payload, severity, discovered_at, tested_at, blocked, patched_at
+		 FROM threats ORDER BY discovered_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var threats []Threat
+	for rows.Next() {
+		var t Threat
+		var source *string
+		if err := rows.Scan(&t.ID, &t.SiteID, &t.TechniqueName, &t.Category, &source, &t.RawPayload, &t.Severity, &t.DiscoveredAt, &t.TestedAt, &t.Blocked, &t.PatchedAt); err != nil {
+			return nil, err
+		}
+		if source != nil {
+			t.Source = *source
+		}
+		threats = append(threats, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return threats, nil
+}
+
+// GetAllRuleVersions retrieves all rule versions, newest first.
+func (db *DB) GetAllRuleVersions(ctx context.Context) ([]Rules, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := db.Pool.Query(ctx,
+		`SELECT id, site_id, version, crusoe_prompt, claude_prompt, updated_at, updated_by
+		 FROM rules ORDER BY version DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var rules []Rules
+	for rows.Next() {
+		var r Rules
+		if err := rows.Scan(&r.ID, &r.SiteID, &r.Version, &r.CrusoePrompt, &r.ClaudePrompt, &r.UpdatedAt, &r.UpdatedBy); err != nil {
+			return nil, err
+		}
+		rules = append(rules, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return rules, nil
+}
