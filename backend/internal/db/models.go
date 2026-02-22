@@ -33,6 +33,7 @@ type Site struct {
 	Status        string     `json:"status"`
 	VerifiedAt    *time.Time `json:"verified_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
+	IsDemo        bool       `json:"is_demo"`
 }
 
 type Threat struct {

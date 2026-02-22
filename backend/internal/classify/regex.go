@@ -58,10 +58,6 @@ func init() {
 			Patterns: compile(
 				// Known vulnerability scanners (CrowdSec http-bad-user-agent)
 				`(?i)User-Agent:\s*(sqlmap|nikto|nmap|masscan|zgrab|nuclei|gobuster|dirbuster|wfuzz|ffuf|feroxbuster|httpx|whatweb|wpscan|joomscan|acunetix|nessus|openvas|qualys|burp|zaproxy|arachni)`,
-				// Generic bot patterns with no legitimate purpose
-				`(?i)User-Agent:\s*(python-requests|python-urllib|Java/|libwww-perl|Go-http-client|curl/|wget/|Scrapy|axios/|node-fetch|HTTPie).*\n.*(?:(?:GET|POST)\s+/(\.env|\.git|wp-login|admin|phpinfo|shell))`,
-				// Empty or missing user agent on non-API paths
-				`(?i)^(GET|POST)\s+/[^a]*\bHTTP/\d\.\d\s*\n(?!.*User-Agent:)`,
 			),
 		},
 	}

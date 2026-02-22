@@ -6,16 +6,23 @@ import { APP_SIDEBAR_LINKS } from '../lib/navLinks'
 
 function ProjectCard({ site, projectName }) {
   const isActive = site.status === 'active'
+  const isDemo = site.is_demo
 
   return (
     <a
       href={`/app/projects/${site.site_id}`}
-      className="group relative block rounded-xl border border-border bg-surface/80 p-7 shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-all duration-200 hover:border-agent/40 hover:bg-surface hover:shadow-[0_4px_20px_rgba(0,0,0,0.4),0_0_0_1px_rgba(212,167,218,0.15)] hover:-translate-y-0.5 cursor-pointer"
+      className={`group relative block rounded-xl border p-7 shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-all duration-200 hover:-translate-y-0.5 cursor-pointer ${
+        isDemo
+          ? 'border-agent/30 bg-agent/5 hover:border-agent/50 hover:bg-agent/10 hover:shadow-[0_4px_20px_rgba(0,0,0,0.4),0_0_0_1px_rgba(212,167,218,0.2)]'
+          : 'border-border bg-surface/80 hover:border-agent/40 hover:bg-surface hover:shadow-[0_4px_20px_rgba(0,0,0,0.4),0_0_0_1px_rgba(212,167,218,0.15)]'
+      }`}
     >
       {/* Status + Name row */}
       <div className="flex items-center gap-3">
         <div className="relative flex h-5 w-5 items-center justify-center">
-          {isActive ? (
+          {isDemo ? (
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-agent" />
+          ) : isActive ? (
             <>
               <span
                 className="absolute inline-flex h-3 w-3 rounded-full bg-safe/30"
@@ -31,13 +38,19 @@ function ProjectCard({ site, projectName }) {
           <h2 className="truncate text-[22px] font-semibold text-text leading-tight">
             {projectName}
           </h2>
-          <span className={`shrink-0 rounded-full px-3 py-1 text-[13px] font-semibold tracking-wide ${
-            isActive
-              ? 'bg-safe/15 text-safe'
-              : 'bg-suspicious/15 text-suspicious'
-          }`}>
-            {isActive ? 'Protected' : 'Pending DNS'}
-          </span>
+          {isDemo ? (
+            <span className="shrink-0 rounded-full bg-agent/15 px-3 py-1 text-[13px] font-semibold tracking-wide text-agent">
+              Demo
+            </span>
+          ) : (
+            <span className={`shrink-0 rounded-full px-3 py-1 text-[13px] font-semibold tracking-wide ${
+              isActive
+                ? 'bg-safe/15 text-safe'
+                : 'bg-suspicious/15 text-suspicious'
+            }`}>
+              {isActive ? 'Protected' : 'Pending DNS'}
+            </span>
+          )}
         </div>
         {/* Arrow affordance */}
         <svg
@@ -222,7 +235,9 @@ export function ProjectsPage() {
           <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
             {sites.map((site, index) => {
               const fallbackName = `Project ${sites.length - index}`
-              const projectName = names[site.site_id] || fallbackName
+              const projectName = site.is_demo
+                ? (site.project_name || 'Demo VulnShop')
+                : (names[site.site_id] || site.project_name || fallbackName)
 
               return (
                 <ProjectCard

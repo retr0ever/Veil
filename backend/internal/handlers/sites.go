@@ -166,6 +166,7 @@ func (sh *SiteHandler) ListSites(w http.ResponseWriter, r *http.Request) {
 			"project_name": s.ProjectName,
 			"status":       s.Status,
 			"upstream_ip":  s.UpstreamIP,
+			"is_demo":      s.IsDemo,
 		})
 	}
 
@@ -187,7 +188,7 @@ func (sh *SiteHandler) GetSite(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "site not found", http.StatusNotFound)
 		return
 	}
-	if site.UserID != user.ID {
+	if site.UserID != user.ID && !site.IsDemo {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -210,7 +211,7 @@ func (sh *SiteHandler) GetSiteStatus(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "site not found", http.StatusNotFound)
 		return
 	}
-	if site.UserID != user.ID {
+	if site.UserID != user.ID && !site.IsDemo {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -266,6 +267,13 @@ func (sh *SiteHandler) DeleteSite(w http.ResponseWriter, r *http.Request) {
 	siteID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		jsonError(w, "invalid site ID", http.StatusBadRequest)
+		return
+	}
+
+	// Prevent deletion of demo sites
+	site, err := sh.db.GetSiteByID(r.Context(), siteID)
+	if err == nil && site != nil && site.IsDemo {
+		jsonError(w, "demo site cannot be deleted", http.StatusForbidden)
 		return
 	}
 
