@@ -194,6 +194,11 @@ func main() {
 		api.Get("/stream/events", streamHandler.HandleSSE)
 	})
 
+	// Host-header routing: catch-all for customer domains CNAMEd to veilproxy.
+	// Any request that doesn't match a known route gets checked against the
+	// sites table by Host header and proxied to the upstream if found.
+	r.NotFound(proxyHandler.HostRoute)
+
 	// Start background goroutines
 	go server.RunWithRecovery(ctx, logger, "dns-verifier", dnsVerifier.VerificationLoop)
 	go server.RunWithRecovery(ctx, logger, "session-cleanup", sm.CleanupLoop)
