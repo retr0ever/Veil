@@ -190,10 +190,14 @@ Each payload should be different from common/obvious examples.
 Respond with a JSON array of objects: [{"name": "technique name", "payload": "the raw payload", "severity": "high|medium|low"}]
 Only respond with the JSON array.`, cat, memContext)
 
-		result := classify.CrusoeClassify(ctx, prompt,
+		raw, err := classify.CrusoeGenerate(ctx, prompt,
 			"You are a security researcher generating attack payloads for WAF testing. Respond only with JSON.")
+		if err != nil {
+			l.logger.Warn("peek: Crusoe generate failed", "category", cat, "err", err)
+			raw = "" // will fall through to fallback
+		}
 
-		payloads := parsePeekPayloads(result)
+		payloads := parsePeekPayloads(raw)
 		if len(payloads) == 0 {
 			// Fallback: insert a basic payload for this category
 			if fb, ok := fallbackPayloads[cat]; ok {
@@ -289,8 +293,7 @@ type peekPayload struct {
 	Severity string `json:"severity"`
 }
 
-func parsePeekPayloads(result *classify.Result) []peekPayload {
-	raw := result.Reason
+func parsePeekPayloads(raw string) []peekPayload {
 	if raw == "" {
 		return nil
 	}
@@ -317,8 +320,8 @@ func (l *Loop) runPoke(ctx context.Context) int {
 		return 0
 	}
 
-	// Ask memory which patterns tend to bypass
-	l.recall(ctx, "poke",
+	// Ask memory which patterns tend to bypass (used for logging context)
+	_ = l.recall(ctx, "poke",
 		"Which attack categories or techniques have historically bypassed our defenses?")
 
 	// Separate into priority buckets
@@ -433,8 +436,16 @@ Analyze why these bypass and generate improved system prompts. Respond with JSON
 Only respond with the JSON object.`,
 		bypassSummary.String(), currentRules.CrusoePrompt, currentRules.ClaudePrompt, memContext)
 
-	claudeResult := classify.ClaudeClassify(ctx, patchPrompt,
+	raw, err := classify.ClaudeGenerate(ctx, patchPrompt,
 		"You are an expert at writing WAF detection prompts. Generate improved prompts that catch the bypassing payloads without increasing false positives.")
+	if err != nil {
+		l.logger.Warn("patch: Claude generate failed", "err", err)
+		l.remember(ctx, "patch",
+			fmt.Sprintf("Cycle %d patch: Claude generation failed: %v", l.cycleNum.Load(), err),
+			map[string]any{"cycle": l.cycleNum.Load(), "success": false})
+		l.logAgent(ctx, "patch", "patch", fmt.Sprintf("Claude generation failed: %v", err), false)
+		return
+	}
 
 	// Parse the response
 	type patchResponse struct {
@@ -444,7 +455,6 @@ Only respond with the JSON object.`,
 	}
 
 	var patch patchResponse
-	raw := claudeResult.Reason
 	if err := json.Unmarshal([]byte(raw), &patch); err != nil {
 		// Try extracting JSON from surrounding text
 		start := strings.Index(raw, "{")

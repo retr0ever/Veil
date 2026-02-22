@@ -771,7 +771,7 @@ func (db *DB) GetGlobalStats(ctx context.Context) (*Stats, error) {
 		`SELECT
 		    COUNT(*),
 		    COUNT(*) FILTER (WHERE blocked),
-		    COALESCE((SELECT COUNT(*) FROM threats), 0),
+		    COALESCE((SELECT COUNT(*) FROM threats WHERE site_id IS NOT NULL), 0),
 		    COALESCE(AVG(response_time_ms), 0)
 		 FROM request_log`,
 	).Scan(&s.TotalRequests, &s.BlockedCount, &s.ThreatCount, &s.AvgResponseMs)
@@ -821,14 +821,15 @@ func (db *DB) GetGlobalRecentRequests(ctx context.Context, limit int) ([]Request
 	return entries, nil
 }
 
-// GetGlobalRecentAgentLogs retrieves the most recent agent log entries across all sites.
+// GetGlobalRecentAgentLogs retrieves the most recent agent log entries across all real sites
+// (excludes synthetic agent-loop entries with no site).
 func (db *DB) GetGlobalRecentAgentLogs(ctx context.Context, limit int) ([]AgentLogEntry, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	rows, err := db.Pool.Query(ctx,
 		`SELECT id, site_id, timestamp, agent, action, detail, success
-		 FROM agent_log ORDER BY timestamp DESC LIMIT $1`, limit)
+		 FROM agent_log WHERE site_id IS NOT NULL ORDER BY timestamp DESC LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -851,14 +852,14 @@ func (db *DB) GetGlobalRecentAgentLogs(ctx context.Context, limit int) ([]AgentL
 	return entries, nil
 }
 
-// GetGlobalThreats retrieves all threats across all sites.
+// GetGlobalThreats retrieves threats across all real sites (excludes agent-generated synthetic data).
 func (db *DB) GetGlobalThreats(ctx context.Context) ([]Threat, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	rows, err := db.Pool.Query(ctx,
 		`SELECT id, site_id, technique_name, category, source, raw_payload, severity, discovered_at, tested_at, blocked, patched_at
-		 FROM threats ORDER BY discovered_at DESC`)
+		 FROM threats WHERE site_id IS NOT NULL ORDER BY discovered_at DESC`)
 	if err != nil {
 		return nil, err
 	}

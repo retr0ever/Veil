@@ -307,10 +307,13 @@ func (ch *CompatHandler) TriggerCycle(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// validAgents is the allowlist of agent IDs that can be queried.
+var validAgents = map[string]bool{"peek": true, "poke": true, "patch": true, "system": true}
+
 // GetAgentMemories handles GET /api/agents/memories?agent=peek|poke|patch|system
 func (ch *CompatHandler) GetAgentMemories(w http.ResponseWriter, r *http.Request) {
 	agent := r.URL.Query().Get("agent")
-	if agent == "" {
+	if !validAgents[agent] {
 		agent = "system"
 	}
 
