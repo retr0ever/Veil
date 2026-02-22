@@ -119,6 +119,11 @@ func (l *Loop) runCycle(ctx context.Context) *CycleResult {
 		l.broadcast("patch", "idle", "No bypasses to fix")
 	}
 
+	// 4. Learn: analyse traffic patterns, auto-ban repeat offenders, update CrowdSec insights
+	l.broadcast("learn", "running", "Analysing traffic patterns and learning...")
+	learnSummary := l.runLearn(ctx)
+	l.broadcast("learn", "done", learnSummary)
+
 	// Log cycle summary
 	l.logAgent(ctx, "system", "cycle_summary",
 		fmt.Sprintf("Cycle #%d: discovered=%d, bypasses=%d", cycleID, discovered, bypasses), true)
@@ -143,6 +148,7 @@ func (l *Loop) runCycle(ctx context.Context) *CycleResult {
 var allCategories = []string{
 	"sqli", "xss", "path_traversal", "command_injection", "ssrf",
 	"xxe", "header_injection", "auth_bypass", "encoding_evasion",
+	"backdoor", "scanner",
 }
 
 // fallbackPayloads provides a basic payload per category for when LLM generation fails.
@@ -178,6 +184,13 @@ func (l *Loop) runPeek(ctx context.Context) int {
 	// Ask memory for guidance on what to explore
 	memContext := l.recall(ctx, "peek",
 		"What attack categories or techniques should I explore next? What discovery strategies have worked well?")
+
+	// Also recall what the LEARN agent found about trending attacks
+	learnContext := l.recall(ctx, "learn",
+		"What attack types are trending? Which types are most common in recent traffic?")
+	if learnContext != "" {
+		memContext += "\n\nRecent traffic insights:\n" + learnContext
+	}
 
 	// Find underexplored categories (fewer than 3 variants)
 	targetCategories := l.pickTargetCategories(coveredCategories)
@@ -596,6 +609,145 @@ func (l *Loop) runCodeScan(ctx context.Context, threats []db.Threat) {
 			fmt.Sprintf("Found %d vulnerable code locations across %d repos", totalFindings, len(sites)), true)
 		l.broadcast("patch", "done", fmt.Sprintf("Found %d code vulnerabilities", totalFindings))
 	}
+}
+
+// runLearn analyses recent traffic patterns, auto-bans repeat offenders,
+// and stores insights in mem0 so future cycles can make smarter decisions.
+// This is the self-improvement "LEARN" step described in the spec.
+func (l *Loop) runLearn(ctx context.Context) string {
+	cycleID := l.cycleNum.Load()
+
+	// 1. Find repeat offender IPs (≥3 blocked requests in last hour)
+	offenders, err := l.db.GetRepeatOffenderIPs(ctx, 1*time.Hour, 3)
+	if err != nil {
+		l.logger.Warn("learn: failed to get repeat offenders", "err", err)
+	}
+
+	autoBanned := 0
+	for _, o := range offenders {
+		// Check if already banned
+		existing, _ := l.db.CheckIPDecision(ctx, o.IP)
+		if existing != nil {
+			continue
+		}
+
+		// Auto-ban IPs with 5+ blocked requests
+		if o.BlockCount >= 5 {
+			expiry := time.Now().Add(24 * time.Hour)
+			err := l.db.InsertDecision(ctx, &db.Decision{
+				IP:              o.IP,
+				DecisionType:    "ban",
+				Scope:           "ip",
+				DurationSeconds: 86400,
+				Reason:          fmt.Sprintf("Auto-banned: %d blocked attacks (%v)", o.BlockCount, o.AttackTypes),
+				Source:          "learn-agent",
+				Confidence:      0.92,
+				ExpiresAt:       &expiry,
+			})
+			if err == nil {
+				autoBanned++
+				l.logger.Info("learn: auto-banned repeat offender",
+					"ip", o.IP, "blocks", o.BlockCount, "types", o.AttackTypes)
+			}
+		} else if o.BlockCount >= 3 {
+			// Throttle IPs with 3-4 blocked requests
+			expiry := time.Now().Add(1 * time.Hour)
+			l.db.InsertDecision(ctx, &db.Decision{
+				IP:              o.IP,
+				DecisionType:    "throttle",
+				Scope:           "ip",
+				DurationSeconds: 3600,
+				Reason:          fmt.Sprintf("Auto-throttled: %d blocked attacks (%v)", o.BlockCount, o.AttackTypes),
+				Source:          "learn-agent",
+				Confidence:      0.85,
+				ExpiresAt:       &expiry,
+			})
+		}
+	}
+
+	// 2. Get attack trends for the past hour
+	trends, err := l.db.GetAttackTrends(ctx, 1*time.Hour)
+	if err != nil {
+		l.logger.Warn("learn: failed to get attack trends", "err", err)
+	}
+
+	// 3. Get classifier breakdown — which classifiers are catching what
+	breakdown, err := l.db.GetClassifierBreakdown(ctx, 1*time.Hour)
+	if err != nil {
+		l.logger.Warn("learn: failed to get classifier breakdown", "err", err)
+	}
+
+	// 4. Get CrowdSec pattern match statistics
+	crowdsecCounts := classify.CrowdSecPatternCounts()
+
+	// 5. Build learning summary
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Cycle %d learn: ", cycleID)
+
+	if autoBanned > 0 {
+		fmt.Fprintf(&sb, "auto-banned %d repeat offender IPs. ", autoBanned)
+	}
+
+	if len(trends) > 0 {
+		fmt.Fprintf(&sb, "Top attack types: ")
+		for i, t := range trends {
+			if i > 2 {
+				break
+			}
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			fmt.Fprintf(&sb, "%s(%d, avg conf %.0f%%)", t.AttackType, t.Count, t.AvgConf*100)
+		}
+		sb.WriteString(". ")
+	}
+
+	// Classifier performance
+	regexCaught, crusoeUsed, claudeUsed := int64(0), int64(0), int64(0)
+	for _, b := range breakdown {
+		switch b.Classifier {
+		case "regex":
+			if b.Classification == "MALICIOUS" || b.Classification == "SUSPICIOUS" {
+				regexCaught += b.Count
+			}
+		case "crusoe":
+			crusoeUsed += b.Count
+		case "claude":
+			claudeUsed += b.Count
+		}
+	}
+	fmt.Fprintf(&sb, "Regex caught %d threats (CrowdSec: %d UA patterns, %d SQLi, %d XSS, %d path, %d backdoor). ",
+		regexCaught, crowdsecCounts["bad_user_agents"], crowdsecCounts["sqli_patterns"],
+		crowdsecCounts["xss_patterns"], crowdsecCounts["path_traversal"], crowdsecCounts["backdoors"])
+
+	if crusoeUsed > 0 || claudeUsed > 0 {
+		fmt.Fprintf(&sb, "LLM escalations: Crusoe=%d, Claude=%d. ", crusoeUsed, claudeUsed)
+	}
+
+	summary := sb.String()
+
+	// 6. Store in mem0 — this is what makes the system self-improving
+	topAttacks := make([]string, 0)
+	for i, t := range trends {
+		if i > 4 {
+			break
+		}
+		topAttacks = append(topAttacks, t.AttackType)
+	}
+
+	l.remember(ctx, "learn", summary, map[string]any{
+		"cycle":           cycleID,
+		"auto_banned":     autoBanned,
+		"repeat_offenders": len(offenders),
+		"top_attacks":      topAttacks,
+		"regex_caught":     regexCaught,
+		"crusoe_used":      crusoeUsed,
+		"claude_used":      claudeUsed,
+	})
+
+	l.logAgent(ctx, "learn", "analyse", summary, true)
+
+	return summary
 }
 
 func (l *Loop) logAgent(ctx context.Context, agent, action, detail string, success bool) {

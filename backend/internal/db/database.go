@@ -1014,6 +1014,111 @@ func (db *DB) GetGlobalThreats(ctx context.Context) ([]Threat, error) {
 	return threats, nil
 }
 
+// RepeatOffender represents an IP with multiple blocked requests.
+type RepeatOffender struct {
+	IP          string
+	BlockCount  int
+	AttackTypes []string
+	FirstSeen   time.Time
+	LastSeen    time.Time
+}
+
+// GetRepeatOffenderIPs returns IPs with multiple blocked requests in the given window.
+func (db *DB) GetRepeatOffenderIPs(ctx context.Context, window time.Duration, minBlocks int) ([]RepeatOffender, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT source_ip::text, COUNT(*) as block_count,
+		    array_agg(DISTINCT attack_type) FILTER (WHERE attack_type IS NOT NULL AND attack_type != '') as attack_types,
+		    MIN(timestamp) as first_seen,
+		    MAX(timestamp) as last_seen
+		 FROM request_log
+		 WHERE blocked = true
+		   AND source_ip IS NOT NULL
+		   AND timestamp > NOW() - $1::interval
+		 GROUP BY source_ip
+		 HAVING COUNT(*) >= $2
+		 ORDER BY block_count DESC
+		 LIMIT 50`,
+		fmt.Sprintf("%d seconds", int(window.Seconds())), minBlocks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var offenders []RepeatOffender
+	for rows.Next() {
+		var o RepeatOffender
+		var attackTypes []string
+		if err := rows.Scan(&o.IP, &o.BlockCount, &attackTypes, &o.FirstSeen, &o.LastSeen); err != nil {
+			return nil, err
+		}
+		o.AttackTypes = attackTypes
+		offenders = append(offenders, o)
+	}
+	return offenders, rows.Err()
+}
+
+// ClassifierBreakdown represents classification stats for a time window.
+type ClassifierBreakdown struct {
+	Classifier     string
+	Classification string
+	Count          int64
+}
+
+// GetClassifierBreakdown returns classification counts grouped by classifier and result.
+func (db *DB) GetClassifierBreakdown(ctx context.Context, window time.Duration) ([]ClassifierBreakdown, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT classifier, classification, COUNT(*) as cnt
+		 FROM request_log
+		 WHERE timestamp > NOW() - $1::interval
+		 GROUP BY classifier, classification
+		 ORDER BY cnt DESC`,
+		fmt.Sprintf("%d seconds", int(window.Seconds())))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var results []ClassifierBreakdown
+	for rows.Next() {
+		var b ClassifierBreakdown
+		if err := rows.Scan(&b.Classifier, &b.Classification, &b.Count); err != nil {
+			return nil, err
+		}
+		results = append(results, b)
+	}
+	return results, rows.Err()
+}
+
+// AttackTrend represents attack frequency for a specific type.
+type AttackTrend struct {
+	AttackType string
+	Count      int64
+	AvgConf    float64
+}
+
+// GetAttackTrends returns attack type frequency over the given window.
+func (db *DB) GetAttackTrends(ctx context.Context, window time.Duration) ([]AttackTrend, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT attack_type, COUNT(*) as cnt, AVG(confidence) as avg_conf
+		 FROM request_log
+		 WHERE attack_type IS NOT NULL AND attack_type != '' AND attack_type != 'none'
+		   AND timestamp > NOW() - $1::interval
+		 GROUP BY attack_type
+		 ORDER BY cnt DESC`,
+		fmt.Sprintf("%d seconds", int(window.Seconds())))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var trends []AttackTrend
+	for rows.Next() {
+		var t AttackTrend
+		if err := rows.Scan(&t.AttackType, &t.Count, &t.AvgConf); err != nil {
+			return nil, err
+		}
+		trends = append(trends, t)
+	}
+	return trends, rows.Err()
+}
+
 // GetAllRuleVersions retrieves all rule versions, newest first.
 func (db *DB) GetAllRuleVersions(ctx context.Context) ([]Rules, error) {
 	if ctx == nil {
