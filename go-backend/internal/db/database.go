@@ -560,6 +560,41 @@ func (db *DB) LookupThreatIP(ctx context.Context, ip string) (*ThreatIPResult, e
 	return &r, nil
 }
 
+// CheckIPDecision returns the most severe active (non-expired) decision for an IP.
+func (db *DB) CheckIPDecision(ctx context.Context, ip string) (*Decision, error) {
+	var d Decision
+	var reason, source *string
+	var expiresAt *time.Time
+	err := db.Pool.QueryRow(ctx,
+		`SELECT id, ip, decision_type, scope, duration_seconds, reason, source, confidence, created_at, expires_at, site_id
+		 FROM decisions
+		 WHERE ip >>= $1::inet
+		   AND (expires_at IS NULL OR expires_at > NOW())
+		 ORDER BY CASE decision_type WHEN 'ban' THEN 0 WHEN 'captcha' THEN 1 WHEN 'throttle' THEN 2 ELSE 3 END
+		 LIMIT 1`, ip,
+	).Scan(&d.ID, &d.IP, &d.DecisionType, &d.Scope, &d.DurationSeconds, &reason, &source, &d.Confidence, &d.CreatedAt, &expiresAt, &d.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	if reason != nil {
+		d.Reason = *reason
+	}
+	if source != nil {
+		d.Source = *source
+	}
+	d.ExpiresAt = expiresAt
+	return &d, nil
+}
+
+// InsertDecision creates a new IP decision (ban, captcha, throttle, or log_only).
+func (db *DB) InsertDecision(ctx context.Context, d *Decision) error {
+	_, err := db.Pool.Exec(ctx,
+		`INSERT INTO decisions (ip, decision_type, scope, duration_seconds, reason, source, confidence, expires_at, site_id)
+		 VALUES ($1::inet, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		d.IP, d.DecisionType, d.Scope, d.DurationSeconds, d.Reason, d.Source, d.Confidence, d.ExpiresAt, d.SiteID)
+	return err
+}
+
 // BulkInsertThreatIPs inserts multiple threat IP entries in a transaction.
 func (db *DB) BulkInsertThreatIPs(ctx context.Context, entries []ThreatIPEntry) error {
 	tx, err := db.Pool.Begin(ctx)

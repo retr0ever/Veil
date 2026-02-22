@@ -9,7 +9,7 @@ const FILTERS = [
   { key: 'patched', label: 'Patched' },
 ]
 
-export function ThreatTable() {
+export function ThreatTable({ siteId }) {
   const [threats, setThreats] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
@@ -18,7 +18,7 @@ export function ThreatTable() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch('/api/threats')
+        const res = await fetch(siteId ? `/api/sites/${siteId}/threats` : '/api/threats')
         if (res.ok) setThreats(await res.json())
       } catch {
         // Silently handle -- empty state is shown
@@ -29,7 +29,7 @@ export function ThreatTable() {
     load()
     const interval = setInterval(load, 10000)
     return () => clearInterval(interval)
-  }, [])
+  }, [siteId])
 
   const counts = useMemo(() => ({
     all: threats.length,

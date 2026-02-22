@@ -54,6 +54,7 @@ export function OnboardingPage() {
   const { user, loading: authLoading, logout } = useAuth()
   const [name, setName] = useState('')
   const [domain, setDomain] = useState('')
+  const [port, setPort] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState(null)
@@ -106,7 +107,11 @@ export function OnboardingPage() {
       const res = await fetch('/api/sites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain: cleanDomain, name: name.trim() || cleanDomain }),
+        body: JSON.stringify({
+          domain: cleanDomain,
+          name: name.trim() || cleanDomain,
+          ...(port && parseInt(port, 10) > 0 ? { port: parseInt(port, 10) } : {}),
+        }),
       })
 
       if (!res.ok) {
@@ -189,21 +194,42 @@ export function OnboardingPage() {
                   </p>
                 </div>
 
-                {/* Project name */}
-                <div>
-                  <label htmlFor="project-name" className="mb-2 block text-[15px] font-medium text-dim">
-                    Project name
-                    <span className="ml-1.5 text-[13px] font-normal text-muted">(optional)</span>
-                  </label>
-                  <input
-                    id="project-name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Customer API"
-                    className="w-full rounded-lg border border-border bg-bg px-4 py-3 text-[16px] text-text placeholder:text-muted/50 transition-colors duration-150 focus:border-agent/50 focus:ring-1 focus:ring-agent/20"
-                    disabled={submitting}
-                  />
+                {/* Project name + Port */}
+                <div className="grid grid-cols-[1fr_120px] gap-4">
+                  <div>
+                    <label htmlFor="project-name" className="mb-2 block text-[15px] font-medium text-dim">
+                      Project name
+                      <span className="ml-1.5 text-[13px] font-normal text-muted">(optional)</span>
+                    </label>
+                    <input
+                      id="project-name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. Customer API"
+                      className="w-full rounded-lg border border-border bg-bg px-4 py-3 text-[16px] text-text placeholder:text-muted/50 transition-colors duration-150 focus:border-agent/50 focus:ring-1 focus:ring-agent/20"
+                      disabled={submitting}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="port" className="mb-2 block text-[15px] font-medium text-dim">
+                      Port
+                    </label>
+                    <input
+                      id="port"
+                      type="number"
+                      value={port}
+                      onChange={(e) => setPort(e.target.value)}
+                      placeholder="80"
+                      min="1"
+                      max="65535"
+                      className="w-full rounded-lg border border-border bg-bg px-4 py-3 text-[16px] text-text placeholder:text-muted/50 transition-colors duration-150 focus:border-agent/50 focus:ring-1 focus:ring-agent/20"
+                      disabled={submitting}
+                    />
+                  </div>
                 </div>
+                <p className="!mt-2 text-[13px] text-muted">
+                  Veil proxies to your origin over HTTP. Default port is 80 — change this if your app runs on a different port.
+                </p>
 
                 {/* Error */}
                 {error && (

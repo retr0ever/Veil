@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { humaniseRuleSource } from '../lib/humanise'
 
-export function BlockRateChart() {
+export function BlockRateChart({ siteId }) {
   const [history, setHistory] = useState([])
 
   useEffect(() => {

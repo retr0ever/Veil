@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useVeilSocket } from '../hooks/useVeilSocket'
+import { useSiteData } from '../hooks/useSiteData'
 import { StatsBar } from './StatsBar'
 import { AgentLog, AgentPipeline } from './AgentLog'
 import { ThreatTable } from './ThreatTable'
@@ -415,7 +415,7 @@ function TestResultsSummary({ results }) {
 /*  Main Dashboard                                               */
 /* ------------------------------------------------------------ */
 export function Dashboard({ site, activeSection = 'site' }) {
-  const { requests, agentEvents, stats } = useVeilSocket()
+  const { requests, agentEvents, stats } = useSiteData(site.site_id)
   const [testRunning, setTestRunning] = useState(false)
   const [testResults, setTestResults] = useState(null)
   const [cycleRunning, setCycleRunning] = useState(false)
@@ -715,7 +715,7 @@ export function Dashboard({ site, activeSection = 'site' }) {
                 <AgentLog events={agentEvents} />
               </div>
               <div className="min-h-0 flex flex-col">
-                <BlockRateChart />
+                <BlockRateChart siteId={site.site_id} />
               </div>
             </div>
           </div>
@@ -731,7 +731,7 @@ export function Dashboard({ site, activeSection = 'site' }) {
               description={SECTION_META.threats.description}
               helpText={SECTION_META.threats.helpText}
             />
-            <ThreatTable />
+            <ThreatTable siteId={site.site_id} />
           </div>
         )}
 

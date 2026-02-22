@@ -32,6 +32,7 @@ type createSiteRequest struct {
 	URL    string `json:"url"`
 	Domain string `json:"domain"`
 	Name   string `json:"name,omitempty"`
+	Port   int    `json:"port,omitempty"` // upstream port (default 80)
 }
 
 type dnsInstructions struct {
@@ -95,6 +96,11 @@ func (sh *SiteHandler) CreateSite(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "upstream IP resolves to a private/internal address — this is not allowed for security reasons", http.StatusBadRequest)
 			return
 		}
+	}
+
+	// Append port if specified (non-standard)
+	if req.Port > 0 && req.Port != 80 {
+		upstreamIP = fmt.Sprintf("%s:%d", upstreamIP, req.Port)
 	}
 
 	site := &db.Site{

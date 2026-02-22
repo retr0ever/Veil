@@ -203,6 +203,17 @@ func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.
 		sourceIP = hp
 	}
 
+	// IP blocklist check: threat_ips feed + active decisions
+	if blocked, reason := h.checkIPBlock(r.Context(), sourceIP); blocked {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":  "Blocked by Veil",
+			"reason": reason,
+		})
+		return
+	}
+
 	// Phase 1: Instant regex classification — blocks obvious attacks inline
 	regexResult := classify.RegexClassify(rawRequest)
 
@@ -287,6 +298,36 @@ func (h *Handler) proxyRequest(w http.ResponseWriter, r *http.Request, site *db.
 
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
+}
+
+// checkIPBlock checks the source IP against the threat_ips feed and active
+// decisions table. Returns (true, reason) if the IP should be blocked.
+func (h *Handler) checkIPBlock(ctx context.Context, ip string) (bool, string) {
+	// Check threat intelligence feed (ban/block tiers)
+	if tip, err := h.db.LookupThreatIP(ctx, ip); err == nil {
+		if tip.Tier == "ban" || tip.Tier == "block" {
+			h.logger.Warn("blocked by threat feed", "ip", ip, "tier", tip.Tier)
+			return true, fmt.Sprintf("IP blocked by threat intelligence (%s)", tip.Tier)
+		}
+		// "scrutinize" tier — don't block, just let classification handle it
+	}
+
+	// Check active decisions (ban/captcha/throttle)
+	if dec, err := h.db.CheckIPDecision(ctx, ip); err == nil {
+		switch dec.DecisionType {
+		case "ban":
+			h.logger.Warn("blocked by decision", "ip", ip, "reason", dec.Reason)
+			return true, fmt.Sprintf("IP banned: %s", dec.Reason)
+		case "captcha":
+			// For now, treat captcha as a soft block (no captcha UI yet)
+			h.logger.Info("captcha decision for IP (passing through)", "ip", ip)
+		case "throttle":
+			// Throttle decisions are handled by the rate limiter already
+			h.logger.Info("throttle decision for IP", "ip", ip)
+		}
+	}
+
+	return false, ""
 }
 
 // backgroundClassify runs the full LLM classification pipeline in a background goroutine.
