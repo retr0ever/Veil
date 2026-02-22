@@ -254,6 +254,24 @@ func (db *DB) GetSitesByUser(ctx context.Context, userID int) ([]Site, error) {
 	return sites, nil
 }
 
+// GetAllSiteIDs returns the IDs of all sites in the database.
+func (db *DB) GetAllSiteIDs(ctx context.Context) ([]int, error) {
+	rows, err := db.Pool.Query(ctx, `SELECT id FROM sites ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // GetUnverifiedSites retrieves all sites with status 'pending' or 'verifying'.
 func (db *DB) GetUnverifiedSites(ctx context.Context) ([]Site, error) {
 	rows, err := db.Pool.Query(ctx,
@@ -827,7 +845,8 @@ func (db *DB) UnlinkRepo(ctx context.Context, siteID int) error {
 func (db *DB) InsertCodeFinding(ctx context.Context, f *CodeFinding) error {
 	_, err := db.Pool.Exec(ctx,
 		`INSERT INTO code_findings (site_id, threat_id, file_path, line_start, line_end, snippet, finding_type, confidence, description, suggested_fix)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		 ON CONFLICT (site_id, file_path, finding_type, status) DO NOTHING`,
 		f.SiteID, f.ThreatID, f.FilePath, f.LineStart, f.LineEnd, f.Snippet, f.FindingType, f.Confidence, f.Description, f.SuggestedFix)
 	return err
 }

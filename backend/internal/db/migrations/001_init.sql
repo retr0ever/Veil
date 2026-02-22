@@ -219,6 +219,7 @@ CREATE TABLE IF NOT EXISTS code_findings (
 );
 CREATE INDEX IF NOT EXISTS idx_code_findings_site ON code_findings(site_id);
 CREATE INDEX IF NOT EXISTS idx_code_findings_threat ON code_findings(threat_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_code_findings_unique ON code_findings(site_id, file_path, finding_type, status);
 
 -- Add is_demo column if missing (safe for existing deployments)
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;

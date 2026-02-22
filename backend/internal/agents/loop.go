@@ -603,28 +603,27 @@ func (l *Loop) runCodeScan(ctx context.Context, threats []db.Threat) {
 
 	// Generate traffic-based findings for all active sites (regardless of repo)
 	l.broadcast("patch", "running", "Generating traffic-based vulnerability findings...")
-	allSites, _ := l.db.GetUnverifiedSites(ctx) // reuse to get active sites
-	_ = allSites                                  // sites are already tracked via threats
+	siteIDs, _ := l.db.GetAllSiteIDs(ctx)
 
-	// For each bypass threat, create a traffic finding for every site that has seen that attack type
-	for _, threat := range attackTypes {
-		// Create traffic-based finding (siteID=0 means global)
-		finding := &db.CodeFinding{
-			SiteID:       0,
-			ThreatID:     &threat.ID,
-			FilePath:     "traffic:" + threat.Category,
-			FindingType:  threat.Category,
-			Confidence:   0.85,
-			Description:  fmt.Sprintf("Detected %s bypass in WAF traffic: %s", threat.Category, threat.TechniqueName),
-			Snippet:      threat.RawPayload,
-			SuggestedFix: trafficFix(threat.Category),
-			Status:       "open",
+	for _, siteID := range siteIDs {
+		for _, threat := range attackTypes {
+			threatID := threat.ID
+			finding := &db.CodeFinding{
+				SiteID:       siteID,
+				ThreatID:     &threatID,
+				FilePath:     "traffic:" + threat.Category,
+				FindingType:  threat.Category,
+				Confidence:   0.85,
+				Description:  fmt.Sprintf("Detected %s bypass in WAF traffic: %s", threat.Category, threat.TechniqueName),
+				Snippet:      threat.RawPayload,
+				SuggestedFix: trafficFix(threat.Category),
+				Status:       "open",
+			}
+			if err := l.db.InsertCodeFinding(ctx, finding); err != nil {
+				continue // duplicate or FK constraint — skip
+			}
+			totalFindings++
 		}
-		if err := l.db.InsertCodeFinding(ctx, finding); err != nil {
-			// Likely duplicate — ignore
-			continue
-		}
-		totalFindings++
 	}
 
 	if totalFindings > 0 {
