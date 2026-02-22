@@ -14,9 +14,10 @@ function AgentCluster({ size = 48 }) {
 
 /* ── Determine health tier from block rate + traffic ── */
 function getHealth(stats) {
-  const hasTraffic = (stats.total_requests ?? 0) > 0
+  const total = stats.total_requests ?? 0
+  const blocked = stats.blocked_requests ?? 0
+  const hasTraffic = total > 0
   const rate = stats.block_rate ?? 0
-  const threats = stats.total_threats ?? 0
 
   if (!hasTraffic) {
     return {
@@ -28,12 +29,12 @@ function getHealth(stats) {
     }
   }
 
-  if (threats === 0) {
+  if (blocked === 0) {
     return {
       tier: 'clear',
       colour: '#8fd9a7',
-      headline: 'All clear -- no threats detected',
-      subline: `Veil scanned ${stats.total_requests} request${stats.total_requests !== 1 ? 's' : ''} with no issues`,
+      headline: 'All clear',
+      subline: `${total} request${total !== 1 ? 's' : ''} inspected, none blocked`,
       bgTint: 'rgba(143,217,167,0.06)',
     }
   }
@@ -43,27 +44,27 @@ function getHealth(stats) {
       tier: 'healthy',
       colour: '#8fd9a7',
       headline: 'Your site is well protected',
-      subline: `Veil blocked ${stats.threats_blocked} of ${threats} threat${threats !== 1 ? 's' : ''} detected`,
+      subline: `Blocked ${blocked} of ${total} request${total !== 1 ? 's' : ''}`,
       bgTint: 'rgba(143,217,167,0.06)',
     }
   }
 
-  if (rate > 50) {
+  if (rate > 20) {
     return {
       tier: 'attention',
       colour: '#f2c77a',
       headline: 'Needs attention',
-      subline: `Veil blocked ${stats.threats_blocked} of ${threats} threat${threats !== 1 ? 's' : ''} -- some got through`,
+      subline: `Blocked ${blocked} malicious request${blocked !== 1 ? 's' : ''} out of ${total} total`,
       bgTint: 'rgba(242,199,122,0.06)',
     }
   }
 
   return {
-    tier: 'risk',
-    colour: '#f08a95',
-    headline: 'At risk',
-    subline: `Only ${stats.threats_blocked} of ${threats} threat${threats !== 1 ? 's' : ''} blocked -- run an improvement cycle`,
-    bgTint: 'rgba(240,138,149,0.06)',
+    tier: 'monitoring',
+    colour: '#8fd9a7',
+    headline: 'Monitoring',
+    subline: `${blocked} request${blocked !== 1 ? 's' : ''} blocked out of ${total} inspected`,
+    bgTint: 'rgba(143,217,167,0.06)',
   }
 }
 
@@ -118,22 +119,21 @@ function ProtectionSummary({ stats }) {
 function OverviewStatCards({ stats }) {
   const cards = [
     {
-      label: 'Threats found',
-      value: stats.total_threats ?? 0,
-      explainer: 'Attack techniques discovered by Veil',
+      label: 'Requests inspected',
+      value: stats.total_requests ?? 0,
+      explainer: 'Total requests analysed by Veil',
       colour: 'var(--color-text)',
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted">
           <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
+          <polyline points="12 6 12 12 16 14" />
         </svg>
       ),
     },
     {
-      label: 'Threats fixed',
-      value: stats.threats_blocked ?? 0,
-      explainer: 'Attacks that Veil now blocks automatically',
+      label: 'Attacks blocked',
+      value: stats.blocked_requests ?? 0,
+      explainer: 'Malicious requests intercepted and blocked',
       colour: 'var(--color-safe)',
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-safe">
