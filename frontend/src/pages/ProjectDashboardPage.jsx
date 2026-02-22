@@ -145,8 +145,8 @@ export function ProjectDashboardPage({ siteId }) {
       onNavClick={handleNavClick}
       user={user}
       logout={logout}
-      projectTitle={projectName || site.target_url}
-      projectUrl={site.target_url}
+      projectTitle={projectName || site.domain || site.target_url}
+      projectUrl={site.domain || site.target_url}
       pageTitle={pageTitle}
     >
       <Dashboard site={site} activeSection={activeSection} />

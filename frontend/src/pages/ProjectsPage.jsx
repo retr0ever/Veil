@@ -3,10 +3,9 @@ import { useAuth } from '../hooks/useAuth'
 import { getProjectNames } from '../lib/projectNames'
 import { AppShell, LoadingSpinner } from '../components/AppShell'
 import { APP_SIDEBAR_LINKS } from '../lib/navLinks'
-import { getBaseUrl, proxyUrl as buildProxyUrl } from '../lib/baseUrl'
 
 function ProjectCard({ site, projectName }) {
-  const proxyUrl = buildProxyUrl(site.site_id)
+  const isActive = site.status === 'active'
 
   return (
     <a
@@ -16,18 +15,28 @@ function ProjectCard({ site, projectName }) {
       {/* Status + Name row */}
       <div className="flex items-center gap-3">
         <div className="relative flex h-5 w-5 items-center justify-center">
-          <span
-            className="absolute inline-flex h-3 w-3 rounded-full bg-safe/30"
-            style={{ animation: 'ping 2s cubic-bezier(0,0,0.2,1) infinite' }}
-          />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-safe" />
+          {isActive ? (
+            <>
+              <span
+                className="absolute inline-flex h-3 w-3 rounded-full bg-safe/30"
+                style={{ animation: 'ping 2s cubic-bezier(0,0,0.2,1) infinite' }}
+              />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-safe" />
+            </>
+          ) : (
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-suspicious" />
+          )}
         </div>
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <h2 className="truncate text-[22px] font-semibold text-text leading-tight">
             {projectName}
           </h2>
-          <span className="shrink-0 rounded-full bg-safe/15 px-3 py-1 text-[13px] font-semibold tracking-wide text-safe">
-            Protected
+          <span className={`shrink-0 rounded-full px-3 py-1 text-[13px] font-semibold tracking-wide ${
+            isActive
+              ? 'bg-safe/15 text-safe'
+              : 'bg-suspicious/15 text-suspicious'
+          }`}>
+            {isActive ? 'Protected' : 'Pending DNS'}
           </span>
         </div>
         {/* Arrow affordance */}
@@ -42,24 +51,26 @@ function ProjectCard({ site, projectName }) {
         </svg>
       </div>
 
-      {/* Target URL */}
-      <p className="mt-3.5 truncate text-[17px] text-dim leading-relaxed">
-        {site.target_url}
-      </p>
-
-      {/* Proxy URL */}
+      {/* Domain */}
       <div className="mt-3.5 flex items-center gap-2.5 rounded-lg border border-border/60 bg-bg/50 px-4 py-2.5">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 text-muted">
-          <path d="M6.5 10.5L4.5 12.5a2.12 2.12 0 01-3-3L3.5 7.5a2.12 2.12 0 013 0" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          <path d="M9.5 5.5l2-2a2.12 2.12 0 013 3l-2 2a2.12 2.12 0 01-3 0" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          <path d="M6 10L10 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="2" y1="12" x2="22" y2="12" />
+          <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
         </svg>
-        <code className="flex-1 truncate text-[15px] text-muted">{proxyUrl}</code>
+        <code className="flex-1 truncate text-[15px] text-text">{site.domain}</code>
       </div>
+
+      {/* Upstream */}
+      {site.upstream_ip && site.upstream_ip !== '0.0.0.0' && (
+        <p className="mt-2.5 truncate text-[14px] text-muted">
+          Origin: <span className="font-mono">{site.upstream_ip}</span>
+        </p>
+      )}
 
       {/* Created date */}
       {site.created_at && (
-        <p className="mt-3.5 text-[14px] text-muted">
+        <p className="mt-2 text-[14px] text-muted">
           Created {new Date(site.created_at).toLocaleDateString('en-GB', {
             day: 'numeric', month: 'short', year: 'numeric',
           })}
@@ -129,7 +140,6 @@ export function ProjectsPage() {
 
     const load = async () => {
       try {
-        await getBaseUrl()
         const res = await fetch('/api/sites')
         if (!res.ok) throw new Error('Failed to load projects')
         const data = await res.json()

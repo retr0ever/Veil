@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useVeilSocket } from '../hooks/useVeilSocket'
-import { getBaseUrl, proxyUrl as buildProxyUrl } from '../lib/baseUrl'
 import { StatsBar } from './StatsBar'
 import { AgentLog, AgentPipeline } from './AgentLog'
 import { ThreatTable } from './ThreatTable'
@@ -254,10 +253,12 @@ function ActivityItem({ item, isLast }) {
 }
 
 /* ------------------------------------------------------------ */
-/*  Connection status banner                                     */
+/*  Connection status banner (DNS-based)                         */
 /* ------------------------------------------------------------ */
-function ConnectionBanner({ hasTraffic, proxyUrl, copied, onCopy }) {
-  if (hasTraffic) {
+function ConnectionBanner({ hasTraffic, site, dnsStatus }) {
+  const isActive = site.status === 'active' || hasTraffic
+
+  if (isActive) {
     return (
       <div className="flex items-center gap-3 border-b border-safe/10 bg-safe/[0.04] px-6 py-3">
         <div className="relative flex h-4 w-4 items-center justify-center">
@@ -268,43 +269,31 @@ function ConnectionBanner({ hasTraffic, proxyUrl, copied, onCopy }) {
           <span className="relative inline-flex h-2 w-2 rounded-full bg-safe" />
         </div>
         <span className="text-[15px] font-medium text-safe">Protected</span>
-        <span className="text-[14px] text-dim">-- Proxy active and monitoring traffic</span>
+        <span className="text-[14px] text-dim">
+          {site.domain} is routing through Veil
+        </span>
       </div>
     )
   }
 
   return (
     <div className="border-b border-agent/10 bg-agent/[0.03] px-6 py-5">
-      {/* Step indicator */}
       <div className="mb-3 flex items-center gap-3">
         <div className="flex h-7 w-7 items-center justify-center rounded-full border border-agent/30 bg-agent/10">
-          <span className="text-[14px] font-semibold text-agent">1</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-agent">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+          </svg>
         </div>
         <div>
-          <h3 className="text-[16px] font-semibold text-text">Connect your site</h3>
-          <p className="text-[14px] text-dim">Point your application at the proxy URL to start monitoring</p>
+          <h3 className="text-[16px] font-semibold text-text">Waiting for DNS</h3>
+          <p className="text-[14px] text-dim">
+            Point <span className="font-mono text-text">{site.domain}</span> to Veil via CNAME.
+            See the Setup tab for instructions.
+          </p>
         </div>
       </div>
-
-      {/* Copy box */}
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-bg/80 px-3.5 py-2.5">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0 text-muted">
-          <path d="M6.5 10.5L4.5 12.5a2.12 2.12 0 01-3-3L3.5 7.5a2.12 2.12 0 013 0" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          <path d="M9.5 5.5l2-2a2.12 2.12 0 013 3l-2 2a2.12 2.12 0 01-3 0" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          <path d="M6 10L10 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-        </svg>
-        <code className="flex-1 truncate text-[15px] text-text">{proxyUrl}</code>
-        <button
-          onClick={onCopy}
-          className="shrink-0 rounded-md border border-border bg-surface px-2.5 py-1 text-[13px] font-medium text-muted transition-all hover:border-dim hover:text-text"
-        >
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-
-      <p className="mt-2.5 text-[13px] text-muted">
-        Replace your backend URL with this proxy URL. See the Setup tab for detailed instructions.
-      </p>
     </div>
   )
 }
@@ -427,22 +416,51 @@ function TestResultsSummary({ results }) {
 /* ------------------------------------------------------------ */
 export function Dashboard({ site, activeSection = 'site' }) {
   const { requests, agentEvents, stats } = useVeilSocket()
-  const [copied, setCopied] = useState(false)
   const [testRunning, setTestRunning] = useState(false)
   const [testResults, setTestResults] = useState(null)
   const [cycleRunning, setCycleRunning] = useState(false)
   const [lastCycle, setLastCycle] = useState(null)
-  const [proxyUrl, setProxyUrl] = useState(buildProxyUrl(site.site_id))
+  const [dnsStatus, setDnsStatus] = useState(null)
+  const [verifying, setVerifying] = useState(false)
+  const [cnameValue, setCnameValue] = useState('')
+  const [cnameCopied, setCnameCopied] = useState(false)
 
+  // Fetch DNS status on mount
   useEffect(() => {
-    getBaseUrl().then(() => setProxyUrl(buildProxyUrl(site.site_id)))
-  }, [site.site_id])
+    const fetchDns = async () => {
+      try {
+        const res = await fetch(`/api/sites/${site.site_id}/status`)
+        if (res.ok) {
+          const data = await res.json()
+          setDnsStatus(data)
+          if (data.proxy_cname) setCnameValue(data.proxy_cname)
+        }
+      } catch {}
+    }
+    fetchDns()
+    // Poll if pending
+    if (site.status !== 'active') {
+      const interval = setInterval(fetchDns, 15000)
+      return () => clearInterval(interval)
+    }
+  }, [site.site_id, site.status])
+
   const hasTraffic = requests.length > 0
 
-  const copyUrl = () => {
-    navigator.clipboard.writeText(proxyUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  const copyCname = () => {
+    navigator.clipboard.writeText(cnameValue)
+    setCnameCopied(true)
+    setTimeout(() => setCnameCopied(false), 2000)
+  }
+
+  const verifyDns = async () => {
+    setVerifying(true)
+    try {
+      await fetch(`/api/sites/${site.site_id}/verify`, { method: 'POST' })
+      const res = await fetch(`/api/sites/${site.site_id}/status`)
+      if (res.ok) setDnsStatus(await res.json())
+    } catch {}
+    setVerifying(false)
   }
 
   const triggerCycle = async () => {
@@ -552,9 +570,8 @@ export function Dashboard({ site, activeSection = 'site' }) {
             {/* Connection status */}
             <ConnectionBanner
               hasTraffic={hasTraffic}
-              proxyUrl={proxyUrl}
-              copied={copied}
-              onCopy={copyUrl}
+              site={site}
+              dnsStatus={dnsStatus}
             />
 
             {/* Stats bar */}
@@ -720,45 +737,74 @@ export function Dashboard({ site, activeSection = 'site' }) {
             />
 
             <div className="px-6 py-8 space-y-6">
-              {/* ---- Step 1: Connect ---- */}
+              {/* ---- Step 1: DNS ---- */}
               <div className="rounded-xl border border-border bg-surface/30 p-6">
                 <div className="flex items-start gap-4">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-peek/30 bg-peek/10">
                     <span className="text-[15px] font-bold text-peek">1</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-[17px] font-semibold text-text">Connect your app</h3>
-                    <p className="mt-1 text-[14px] text-muted">
-                      Swap your backend URL with Veil's proxy. All traffic flows through Veil first.
-                    </p>
-
-                    {/* Copy box */}
-                    <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-bg px-3.5 py-2.5">
-                      <code className="flex-1 truncate text-[14px] text-text">{proxyUrl}</code>
-                      <button
-                        onClick={copyUrl}
-                        className="shrink-0 rounded-md border border-border bg-surface px-2.5 py-1 text-[13px] font-medium text-muted transition-all hover:border-dim hover:text-text"
-                      >
-                        {copied ? 'Copied' : 'Copy'}
-                      </button>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-[17px] font-semibold text-text">Update your DNS</h3>
+                        <p className="mt-1 text-[14px] text-muted">
+                          Add a CNAME record to route <span className="font-mono text-text">{site.domain}</span> through Veil.
+                        </p>
+                      </div>
+                      {(site.status === 'active' || dnsStatus?.status === 'active') && (
+                        <span className="shrink-0 rounded-full bg-safe/15 px-3 py-1 text-[12px] font-semibold text-safe">
+                          Verified
+                        </span>
+                      )}
                     </div>
 
-                    {/* Diff snippet */}
-                    <div className="mt-3 overflow-hidden rounded-lg border border-border bg-bg">
-                      <div className="border-b border-border/50 px-3 py-1.5">
-                        <span className="text-[11px] font-medium tracking-wider text-muted uppercase">.env</span>
-                      </div>
-                      <div className="p-3 font-mono text-[13px]">
-                        <div className="flex items-center gap-2 text-blocked/70">
-                          <span className="font-semibold text-blocked">-</span>
-                          <span>API_URL={site.target_url}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-safe/70 mt-0.5">
-                          <span className="font-semibold text-safe">+</span>
-                          <span>API_URL={proxyUrl}</span>
-                        </div>
-                      </div>
+                    {/* DNS record table */}
+                    <div className="mt-4 overflow-hidden rounded-lg border border-border bg-bg">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-border/50 text-[11px] font-medium tracking-wide text-muted uppercase">
+                            <th className="px-4 py-2">Type</th>
+                            <th className="px-4 py-2">Name</th>
+                            <th className="px-4 py-2">Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="text-[13px]">
+                            <td className="px-4 py-3">
+                              <span className="rounded bg-agent/10 px-2 py-0.5 text-[12px] font-semibold text-agent">CNAME</span>
+                            </td>
+                            <td className="px-4 py-3 font-mono text-text">{site.domain}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-safe">{cnameValue || 'loading...'}</span>
+                                {cnameValue && (
+                                  <button
+                                    onClick={copyCname}
+                                    className="shrink-0 rounded-md border border-border bg-surface px-2 py-0.5 text-[12px] font-medium text-muted transition-all hover:border-dim hover:text-text"
+                                  >
+                                    {cnameCopied ? 'Copied' : 'Copy'}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
+
+                    {/* Verify button */}
+                    {site.status !== 'active' && dnsStatus?.status !== 'active' && (
+                      <div className="mt-3 flex items-center gap-3">
+                        <button
+                          onClick={verifyDns}
+                          disabled={verifying}
+                          className="rounded-lg border border-border bg-transparent px-4 py-2 text-[13px] font-medium text-muted transition-all hover:border-dim hover:text-text disabled:opacity-40"
+                        >
+                          {verifying ? 'Checking...' : 'Verify DNS'}
+                        </button>
+                        <span className="text-[12px] text-muted">Auto-checking every 15s</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
