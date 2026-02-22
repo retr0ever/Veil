@@ -71,41 +71,41 @@ function ProjectCard({ site, projectName }) {
 
 function ProjectsEmptyState() {
   return (
-    <div className="flex min-h-[50vh] items-center justify-center px-4">
-      <div className="flex max-w-md flex-col items-center text-center">
+    <div className="flex min-h-[60vh] items-center justify-center px-6">
+      <div className="flex max-w-lg flex-col items-center text-center">
         {/* Shield icon with subtle glow */}
-        <div className="relative mb-6">
+        <div className="relative mb-8">
           <div
             className="absolute inset-0 rounded-full"
             style={{
               background: 'radial-gradient(circle, rgba(99,167,255,0.12) 0%, transparent 70%)',
-              transform: 'scale(2.5)',
+              transform: 'scale(3)',
             }}
           />
-          <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-agent/20 bg-agent/5">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-agent">
+          <div className="relative flex h-20 w-20 items-center justify-center rounded-full border border-agent/20 bg-agent/5">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-agent">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
               <path d="M9 12l2 2 4-4" />
             </svg>
           </div>
         </div>
 
-        <h2 className="text-[24px] font-semibold text-text">No projects yet</h2>
-        <p className="mt-2.5 max-w-sm text-[17px] leading-relaxed text-dim">
+        <h2 className="text-[32px] font-semibold text-text">No projects yet</h2>
+        <p className="mt-3 max-w-md text-[20px] leading-relaxed text-dim">
           Create your first project to start protecting your API with Veil's self-improving AI firewall.
         </p>
 
         <a
           href="/app/onboarding"
-          className="mt-6 inline-flex items-center gap-2.5 rounded-lg bg-agent px-7 py-3.5 text-[17px] font-semibold text-white transition-all hover:brightness-110"
+          className="mt-8 inline-flex items-center gap-3 rounded-xl bg-agent px-9 py-4.5 text-[20px] font-semibold text-white transition-all hover:brightness-110"
         >
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M8 3v10M3 8h10" />
           </svg>
           Create your first project
         </a>
 
-        <p className="mt-4 text-[15px] text-muted">
+        <p className="mt-5 text-[18px] text-muted">
           It only takes a minute to get started
         </p>
       </div>
@@ -157,9 +157,9 @@ export function ProjectsPage() {
         {/* Page header */}
         <div className="mb-8 flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-[32px] font-semibold text-text">Projects</h1>
+            <h1 className="text-[38px] font-semibold text-text">Projects</h1>
             {!loading && !error && sites.length > 0 && (
-              <p className="mt-1.5 text-[17px] text-dim">
+              <p className="mt-2 text-[20px] text-dim">
                 {sites.length} project{sites.length !== 1 ? 's' : ''} protected by Veil
               </p>
             )}
@@ -167,7 +167,7 @@ export function ProjectsPage() {
           {!loading && sites.length > 0 && (
             <a
               href="/app/onboarding"
-              className="flex items-center gap-2.5 rounded-lg bg-agent px-6 py-3 text-[16px] font-semibold text-white transition-all hover:brightness-110"
+              className="flex items-center gap-2.5 rounded-xl bg-agent px-7 py-3.5 text-[18px] font-semibold text-white transition-all hover:brightness-110"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M8 3v10M3 8h10" />

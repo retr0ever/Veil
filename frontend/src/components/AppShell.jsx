@@ -147,7 +147,7 @@ function ContentHeader({ pageTitle, projectTitle }) {
   return (
     <div className="flex h-14 shrink-0 items-center border-b border-border/40 px-6">
       {projectTitle ? (
-        <div className="flex items-center gap-2 text-[16px]">
+        <div className="flex items-center gap-2 text-[18px]">
           <a
             href="/app/projects"
             className="text-muted transition-colors hover:text-text"
