@@ -888,7 +888,7 @@ function BlocklistPanel({ siteId }) {
 /* ------------------------------------------------------------ */
 /*  Main Dashboard                                               */
 /* ------------------------------------------------------------ */
-export function Dashboard({ site, activeSection = 'site' }) {
+export function Dashboard({ site, activeSection = 'site', onSiteUpdate }) {
   const { requests, agentEvents, stats, findings, setFindings } = useSiteData(site.site_id)
   const [testRunning, setTestRunning] = useState(false)
   const [testResults, setTestResults] = useState(null)
@@ -911,6 +911,10 @@ export function Dashboard({ site, activeSection = 'site' }) {
           const data = await res.json()
           setDnsStatus(data)
           if (data.proxy_cname) setCnameValue(data.proxy_cname)
+          // Propagate DNS active status to parent so sidebar updates instantly
+          if (data.status === 'active' && site.status !== 'active' && onSiteUpdate) {
+            onSiteUpdate({ status: 'active' })
+          }
         }
       } catch {}
     }
@@ -920,7 +924,7 @@ export function Dashboard({ site, activeSection = 'site' }) {
       const interval = setInterval(fetchDns, 15000)
       return () => clearInterval(interval)
     }
-  }, [site.site_id, site.status])
+  }, [site.site_id, site.status, onSiteUpdate])
 
   // Fetch repo link status
   useEffect(() => {
@@ -965,7 +969,13 @@ export function Dashboard({ site, activeSection = 'site' }) {
     try {
       await fetch(`/api/sites/${site.site_id}/verify`, { method: 'POST' })
       const res = await fetch(`/api/sites/${site.site_id}/status`)
-      if (res.ok) setDnsStatus(await res.json())
+      if (res.ok) {
+        const data = await res.json()
+        setDnsStatus(data)
+        if (data.status === 'active' && onSiteUpdate) {
+          onSiteUpdate({ status: 'active' })
+        }
+      }
     } catch {}
     setVerifying(false)
   }

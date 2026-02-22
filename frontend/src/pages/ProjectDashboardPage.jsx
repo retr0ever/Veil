@@ -143,6 +143,11 @@ export function ProjectDashboardPage({ siteId }) {
   const currentLink = PROJECT_SIDEBAR_LINKS.find((l) => l.key === effectiveSection)
   const pageTitle = currentLink?.label || 'Overview'
 
+  // Allow Dashboard to update site status (e.g. when DNS is verified or repo linked)
+  const handleSiteUpdate = useCallback((updates) => {
+    setSite((prev) => prev ? { ...prev, ...updates } : prev)
+  }, [])
+
   return (
     <AppShell
       links={PROJECT_SIDEBAR_LINKS}
@@ -155,7 +160,7 @@ export function ProjectDashboardPage({ siteId }) {
       pageTitle={pageTitle}
       disabledKeys={disabledKeys}
     >
-      <Dashboard site={site} activeSection={effectiveSection} />
+      <Dashboard site={site} activeSection={effectiveSection} onSiteUpdate={handleSiteUpdate} />
     </AppShell>
   )
 }
