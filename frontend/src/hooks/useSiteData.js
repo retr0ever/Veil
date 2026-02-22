@@ -29,6 +29,8 @@ export function useSiteData(siteId) {
     blocked: r.blocked,
     classifier: r.classifier,
     attack_type: r.attack_type,
+    source_ip: r.source_ip || '',
+    response_time_ms: r.response_time_ms ?? null,
   }), [])
 
   // Normalise a DB AgentLogEntry to the shape components expect

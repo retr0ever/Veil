@@ -172,42 +172,72 @@ function ActivityItem({ item, isLast }) {
         ? 'bg-blocked/15 text-blocked'
         : 'bg-suspicious/15 text-suspicious'
 
+  // Truncate path for display
+  const shortPath = item.path
+    ? item.path.length > 48 ? item.path.slice(0, 45) + '...' : item.path
+    : null
+
   return (
     <div
       className={`${!isLast ? 'border-b border-border/30' : ''}`}
     >
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-3 bg-transparent border-none px-6 py-3.5 text-left transition-colors hover:bg-surface/30"
+        className="flex w-full items-start gap-3 bg-transparent border-none px-6 py-3.5 text-left transition-colors hover:bg-surface/30"
       >
         {/* Category icon */}
-        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${iconBg}`}>
+        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg mt-0.5 ${iconBg}`}>
           {icon}
         </div>
 
-        {/* Summary */}
-        <span className={`flex-1 min-w-0 truncate text-[15px] ${item.color}`}>
-          {item.summary}
-        </span>
+        {/* Summary + metadata */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`truncate text-[15px] ${item.color}`}>
+              {item.summary}
+            </span>
+          </div>
+          {/* Inline metadata row for requests */}
+          {item.kind === 'request' && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted">
+              {item.method && shortPath && (
+                <span className="font-mono text-text/70">
+                  <span className="font-semibold">{item.method}</span> {shortPath}
+                </span>
+              )}
+              {item.confidence != null && (
+                <span>
+                  <span className={`font-mono font-medium ${item.confidence >= 80 ? 'text-blocked' : item.confidence >= 50 ? 'text-suspicious' : 'text-muted'}`}>{item.confidence}%</span> confidence
+                </span>
+              )}
+              {item.classifier && (
+                <span>via <span className="font-medium text-text/70">{item.classifier}</span></span>
+              )}
+              {item.sourceIp && (
+                <span className="font-mono">{item.sourceIp}</span>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Timestamp */}
-        <span className="shrink-0 text-[13px] text-muted tabular-nums">
+        <span className="shrink-0 text-[13px] text-muted tabular-nums mt-0.5">
           {relativeTime(item.timestamp)}
         </span>
 
         {/* Severity badge */}
         {item.blocked && (
-          <span className="shrink-0 rounded-md bg-blocked/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase text-blocked">
+          <span className="shrink-0 rounded-md bg-blocked/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase text-blocked mt-0.5">
             Blocked
           </span>
         )}
         {!item.blocked && item.kind === 'request' && (
-          <span className="shrink-0 rounded-md bg-suspicious/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase text-suspicious">
+          <span className="shrink-0 rounded-md bg-suspicious/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase text-suspicious mt-0.5">
             Flagged
           </span>
         )}
         {item.kind === 'agent' && item.agentName && (
-          <span className="shrink-0 rounded-md bg-agent/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-agent">
+          <span className="shrink-0 rounded-md bg-agent/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-agent mt-0.5">
             {item.agentName}
           </span>
         )}
@@ -222,7 +252,7 @@ function ActivityItem({ item, isLast }) {
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className={`shrink-0 text-muted transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+          className={`shrink-0 text-muted transition-transform duration-200 mt-1 ${expanded ? 'rotate-90' : ''}`}
         >
           <polyline points="9 18 15 12 9 6" />
         </svg>
@@ -230,28 +260,58 @@ function ActivityItem({ item, isLast }) {
 
       {/* Expanded details */}
       <div
-        className={`overflow-hidden transition-all duration-200 ease-out ${expanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
+        className={`overflow-hidden transition-all duration-200 ease-out ${expanded ? 'max-h-[300px] opacity-100' : 'max-h-0 opacity-0'
           }`}
       >
-        <div className="mx-6 mb-3 flex flex-wrap gap-x-5 gap-y-2 rounded-lg border border-border/40 bg-bg px-4 py-3 text-[13px]">
-          {item.attackType && (
-            <span className="text-muted">
-              Type: <span className="font-medium text-text">{humaniseAttackType(item.attackType)}</span>
-            </span>
-          )}
-          {item.classification && (
-            <span className="text-muted">
-              Classification: <span className="font-medium text-text">{item.classification}</span>
-            </span>
-          )}
-          {item.confidence != null && (
-            <span className="text-muted">
-              Confidence: <span className="font-mono font-medium text-text">{item.confidence}%</span>
-            </span>
-          )}
-          <p className="w-full text-dim leading-relaxed">
+        <div className="mx-6 mb-3 space-y-3 rounded-lg border border-border/40 bg-bg px-4 py-3 text-[13px]">
+          {/* Metadata chips */}
+          <div className="flex flex-wrap gap-x-5 gap-y-2">
+            {item.attackType && (
+              <span className="text-muted">
+                Type: <span className="font-medium text-text">{humaniseAttackType(item.attackType)}</span>
+              </span>
+            )}
+            {item.classification && (
+              <span className="text-muted">
+                Classification: <span className={`font-semibold ${item.classification === 'MALICIOUS' ? 'text-blocked' : 'text-suspicious'}`}>{item.classification}</span>
+              </span>
+            )}
+            {item.confidence != null && (
+              <span className="text-muted">
+                Confidence: <span className="font-mono font-medium text-text">{item.confidence}%</span>
+              </span>
+            )}
+            {item.classifier && (
+              <span className="text-muted">
+                Classifier: <span className="font-medium text-text">{item.classifier}</span>
+              </span>
+            )}
+            {item.sourceIp && (
+              <span className="text-muted">
+                Source: <span className="font-mono font-medium text-text">{item.sourceIp}</span>
+              </span>
+            )}
+            {item.responseTimeMs != null && (
+              <span className="text-muted">
+                Response: <span className="font-mono font-medium text-text">{Math.round(item.responseTimeMs)}ms</span>
+              </span>
+            )}
+          </div>
+
+          {/* Explanation */}
+          <p className="text-dim leading-relaxed">
             {item.explanation}
           </p>
+
+          {/* Raw request preview */}
+          {item.rawRequest && (
+            <div className="rounded-md border border-border/30 bg-surface/50 px-3 py-2">
+              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted">Raw request</p>
+              <pre className="whitespace-pre-wrap break-all font-mono text-[12px] leading-relaxed text-text/80 max-h-[120px] overflow-y-auto">
+                {item.rawRequest.slice(0, 500)}{item.rawRequest.length > 500 ? '...' : ''}
+              </pre>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -759,6 +819,12 @@ export function Dashboard({ site, activeSection = 'site' }) {
       .filter((r) => r.classification !== 'SAFE')
       .forEach((r) => {
         const { summary, color } = humaniseRequest(r)
+        // Extract HTTP method + path from the raw request first line
+        const firstLine = (r.message || '').split('\n')[0] || ''
+        const methodMatch = firstLine.match(/^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+(\S+)/)
+        const method = methodMatch ? methodMatch[1] : null
+        const path = methodMatch ? methodMatch[2] : null
+
         items.push({
           time: r.timestamp ? new Date(r.timestamp).getTime() : 0,
           timestamp: r.timestamp,
@@ -771,6 +837,12 @@ export function Dashboard({ site, activeSection = 'site' }) {
           classification: r.classification,
           confidence: r.confidence != null ? Math.round(r.confidence * 100) : null,
           explanation: attackExplanation(r.attack_type),
+          rawRequest: r.message || '',
+          classifier: r.classifier || '',
+          sourceIp: r.source_ip || '',
+          responseTimeMs: r.response_time_ms,
+          method,
+          path,
         })
       })
 
@@ -860,19 +932,6 @@ export function Dashboard({ site, activeSection = 'site' }) {
                   ))}
                 </div>
               )}
-              {mergedFeed.map((item, i) => (
-                <div key={i} className="px-4 py-2.5 border-b border-border/40 flex items-center gap-3">
-                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.kind === 'agent' ? 'bg-agent' : item.blocked ? 'bg-blocked' : 'bg-suspicious'
-                    }`} />
-                  <span className={`flex-1 text-[13px] ${item.color}`}>{item.summary}</span>
-                  <span className="text-[11px] text-muted shrink-0">{relativeTime(item.timestamp)}</span>
-                  {item.blocked && (
-                    <span className="text-blocked text-[10px] font-semibold shrink-0 bg-blocked/10 px-2 py-0.5 rounded">
-                      BLOCKED
-                    </span>
-                  )}
-                </div>
-              ))}
             </div>
           </div>
         )}
