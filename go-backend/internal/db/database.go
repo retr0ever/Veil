@@ -372,10 +372,19 @@ func (db *DB) InsertAgentLog(ctx context.Context, a *AgentLogEntry) error {
 }
 
 // GetRecentAgentLogs retrieves the most recent agent log entries for a site.
+// If siteID is 0, it queries for entries where site_id IS NULL (global/system entries).
 func (db *DB) GetRecentAgentLogs(ctx context.Context, siteID int, limit int) ([]AgentLogEntry, error) {
-	rows, err := db.Pool.Query(ctx,
-		`SELECT id, site_id, timestamp, agent, action, detail, success
-		 FROM agent_log WHERE site_id = $1 ORDER BY timestamp DESC LIMIT $2`, siteID, limit)
+	var rows pgx.Rows
+	var err error
+	if siteID == 0 {
+		rows, err = db.Pool.Query(ctx,
+			`SELECT id, site_id, timestamp, agent, action, detail, success
+			 FROM agent_log WHERE site_id IS NULL ORDER BY timestamp DESC LIMIT $1`, limit)
+	} else {
+		rows, err = db.Pool.Query(ctx,
+			`SELECT id, site_id, timestamp, agent, action, detail, success
+			 FROM agent_log WHERE site_id = $1 ORDER BY timestamp DESC LIMIT $2`, siteID, limit)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -438,10 +447,19 @@ func (db *DB) InsertThreat(ctx context.Context, t *Threat) error {
 }
 
 // GetThreats retrieves all threats for a site, ordered by discovery time (newest first).
+// If siteID is 0, it queries for threats where site_id IS NULL (global/system threats).
 func (db *DB) GetThreats(ctx context.Context, siteID int) ([]Threat, error) {
-	rows, err := db.Pool.Query(ctx,
-		`SELECT id, site_id, technique_name, category, source, raw_payload, severity, discovered_at, tested_at, blocked, patched_at
-		 FROM threats WHERE site_id = $1 ORDER BY discovered_at DESC`, siteID)
+	var rows pgx.Rows
+	var err error
+	if siteID == 0 {
+		rows, err = db.Pool.Query(ctx,
+			`SELECT id, site_id, technique_name, category, source, raw_payload, severity, discovered_at, tested_at, blocked, patched_at
+			 FROM threats WHERE site_id IS NULL ORDER BY discovered_at DESC`)
+	} else {
+		rows, err = db.Pool.Query(ctx,
+			`SELECT id, site_id, technique_name, category, source, raw_payload, severity, discovered_at, tested_at, blocked, patched_at
+			 FROM threats WHERE site_id = $1 ORDER BY discovered_at DESC`, siteID)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -37,7 +37,7 @@ type Site struct {
 
 type Threat struct {
 	ID            int64      `json:"id"`
-	SiteID        int        `json:"site_id"`
+	SiteID        *int       `json:"site_id"`
 	TechniqueName string     `json:"technique_name"`
 	Category      string     `json:"category"`
 	Source        string     `json:"source,omitempty"`
@@ -65,7 +65,7 @@ type RequestLogEntry struct {
 
 type AgentLogEntry struct {
 	ID        int64     `json:"id"`
-	SiteID    int       `json:"site_id"`
+	SiteID    *int      `json:"site_id"`
 	Timestamp time.Time `json:"timestamp"`
 	Agent     string    `json:"agent"`
 	Action    string    `json:"action"`
