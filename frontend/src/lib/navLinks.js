@@ -21,4 +21,5 @@ export const PROJECT_SIDEBAR_LINKS = [
 export const APP_SIDEBAR_LINKS = [
   { key: 'projects', href: '/app/projects', label: 'Projects', icon: 'folder' },
   { key: 'new', href: '/app/onboarding', label: 'New Project', icon: 'plus' },
+  { key: 'docs', href: '/app/docs', label: 'Documentation', icon: 'file-text' },
 ]
