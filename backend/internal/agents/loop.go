@@ -409,6 +409,13 @@ func (l *Loop) runPatch(ctx context.Context) {
 		return
 	}
 
+	// Always generate traffic-based findings from all threats (blocked or not)
+	defer func() {
+		if len(threats) > 0 {
+			l.runCodeScan(ctx, threats)
+		}
+	}()
+
 	var bypassing []db.Threat
 	for _, t := range threats {
 		if !t.Blocked && t.TestedAt != nil {
@@ -416,16 +423,6 @@ func (l *Loop) runPatch(ctx context.Context) {
 		}
 	}
 	if len(bypassing) == 0 {
-		// Even with no bypasses, generate traffic-based findings from all blocked threats
-		var blocked []db.Threat
-		for _, t := range threats {
-			if t.Blocked {
-				blocked = append(blocked, t)
-			}
-		}
-		if len(blocked) > 0 {
-			l.runCodeScan(ctx, blocked)
-		}
 		return
 	}
 
@@ -564,9 +561,6 @@ Only respond with the JSON object.`,
 	l.logAgent(ctx, "patch", "patch",
 		fmt.Sprintf("Rules v%d: fixed %d/%d bypasses. %s", newVersion, fixed, len(bypassing), patch.Reasoning),
 		fixed > 0)
-
-	// Code scanning: find vulnerable code in linked repos
-	l.runCodeScan(ctx, bypassing)
 }
 
 // runCodeScan scans linked repos for code vulnerable to the given attack types.
