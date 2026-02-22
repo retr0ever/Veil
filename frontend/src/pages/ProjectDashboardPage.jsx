@@ -102,35 +102,33 @@ export function ProjectDashboardPage({ siteId }) {
     window.location.hash = key === 'site' ? 'overview' : key
   }, [])
 
-  // Auth loading or data loading
+  // Auth loading or data loading — minimal shell, no sidebar
   if (authLoading || loading) {
     return (
-      <AppShell
-        links={PROJECT_SIDEBAR_LINKS}
-        activeKey={activeSection}
-        onNavClick={handleNavClick}
-        user={user}
-        logout={logout}
-      >
+      <div className="flex min-h-screen flex-col bg-bg text-text">
+        <header className="flex h-14 shrink-0 items-center border-b border-border/40 px-6">
+          <a href="/app/projects" className="font-logo text-[24px] leading-none tracking-wide text-[#f6f1f9]">
+            VEIL.
+          </a>
+        </header>
         <LoadingSpinner label="Loading project..." />
-      </AppShell>
+      </div>
     )
   }
 
   if (!user) return null
 
-  // Project not found
+  // Project not found — show full-page error without sidebar
   if (!site) {
     return (
-      <AppShell
-        links={PROJECT_SIDEBAR_LINKS}
-        activeKey={activeSection}
-        onNavClick={handleNavClick}
-        user={user}
-        logout={logout}
-      >
+      <div className="flex min-h-screen flex-col bg-bg text-text">
+        <header className="flex h-14 shrink-0 items-center border-b border-border/40 px-6">
+          <a href="/app/projects" className="font-logo text-[24px] leading-none tracking-wide text-[#f6f1f9]">
+            VEIL.
+          </a>
+        </header>
         <NotFoundState />
-      </AppShell>
+      </div>
     )
   }
 

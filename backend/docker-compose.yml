@@ -19,6 +19,7 @@ services:
       - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY}
       - PORT=${PORT:-8080}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MEM0_API_KEY=${MEM0_API_KEY}
     depends_on:
       db:
         condition: service_healthy
